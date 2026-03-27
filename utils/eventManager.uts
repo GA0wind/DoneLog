@@ -1,0 +1,247 @@
+import { StorageUtils, Event, CompletionRecord } from './storage.uts'
+
+/**
+ * 事件管理工具类
+ */
+export class EventManager {
+  private static nextEventId: number = 1
+  private static nextRecordId: number = 1
+
+  /**
+   * 初始化ID
+   */
+  static initIds(): void {
+    const events = StorageUtils.getEvents()
+    const records = StorageUtils.getCompletionRecords()
+
+    if (events.length > 0) {
+      this.nextEventId = Math.max(...events.map(e => e.id)) + 1
+    }
+
+    if (records.length > 0) {
+      this.nextRecordId = Math.max(...records.map(r => r.id)) + 1
+    }
+  }
+
+  /**
+   * 计算下一次执行时间距今天数
+   * @param event 事件对象
+   * @param lastCompleteDate 上次完成时间（如果有）
+   * @returns 距今天数（负数表示已过去，正数表示未来）
+   */
+  static calculateDaysUntilDue(event: Event, lastCompleteDate: number | null = null): number {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const oneDay = 24 * 60 * 60 * 1000
+
+    if (event.nextDueDate > 0) {
+      // 使用自定义下次完成时间，只比较日期部分
+      const dueDate = new Date(event.nextDueDate)
+      const dueDateStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime()
+      return Math.floor((dueDateStart - todayStart) / oneDay)
+    } else if (event.intervalDays > 0) {
+      // 使用间隔天数：上次完成时间（没有则用创建时间）+ 间隔天数 + 1
+      const baseTime = lastCompleteDate || event.createTime
+      const baseDate = new Date(baseTime)
+      const baseDateStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()).getTime()
+      const nextDue = baseDateStart + (event.intervalDays + 1) * oneDay
+      return Math.floor((nextDue - todayStart) / oneDay)
+    }
+
+    return 0
+  }
+
+  /**
+   * 获取排序后的事件列表
+   * @param showTerminated 是否显示已终止事件
+   * @param labelId 标签筛选ID
+   * @returns 排序后的事件列表
+   */
+  static getSortedEvents(showTerminated: boolean = false, labelId: number | null = null): Event[] {
+    const events = StorageUtils.getEvents()
+    const records = StorageUtils.getCompletionRecords()
+
+    // 筛选事件
+    let filteredEvents = events.filter(event => {
+      // 标签筛选
+      if (labelId !== null) {
+        const labelIds = event.labelIdList.split(',').map(id => parseInt(id))
+        if (!labelIds.includes(labelId)) {
+          return false
+        }
+      }
+
+      // 是否显示已终止
+      if (!showTerminated && event.isTerminated) {
+        return false
+      }
+
+      return true
+    })
+
+    // 排序：今天要做的事优先，然后是已过去天数从大到小，最后是未来天数从小到大
+    filteredEvents.sort((a, b) => {
+      const lastRecordA = records
+        .filter(r => r.eventId === a.id)
+        .sort((x, y) => y.lastCompleteDate - x.lastCompleteDate)[0]
+      const lastRecordB = records
+        .filter(r => r.eventId === b.id)
+        .sort((x, y) => y.lastCompleteDate - x.lastCompleteDate)[0]
+
+      const daysA = this.calculateDaysUntilDue(a, lastRecordA?.lastCompleteDate || null)
+      const daysB = this.calculateDaysUntilDue(b, lastRecordB?.lastCompleteDate || null)
+
+      // 距今天数为0的优先（今天要做的事）
+      if (daysA === 0 && daysB !== 0) return -1
+      if (daysB === 0 && daysA !== 0) return 1
+
+      // 已过去的事件（days < 0），按绝对值从大到小排列
+      if (daysA < 0 && daysB < 0) {
+        return daysA - daysB // 因为都是负数，daysA - daysB 会让绝对值大的排前面
+      }
+
+      // 未来事件（days > 0），按天数从小到大排列
+      if (daysA > 0 && daysB > 0) {
+        return daysA - daysB
+      }
+
+      // 已过去的事件排在未来的事件前面
+      if (daysA < 0 && daysB > 0) return -1
+      if (daysA > 0 && daysB < 0) return 1
+
+      return 0
+    })
+
+    return filteredEvents
+  }
+
+  /**
+   * 获取今日应完成的事件
+   */
+  static getTodayEvents(): Event[] {
+    const events = this.getSortedEvents(false)
+    const records = StorageUtils.getCompletionRecords()
+
+    return events.filter(event => {
+      const lastRecord = records
+        .filter(r => r.eventId === event.id)
+        .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)[0]
+
+      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+      return daysUntilDue === 0
+    })
+  }
+
+  /**
+   * 添加事件
+   */
+  static addEvent(event: Omit<Event, 'id' | 'createTime' | 'updateTime'>): boolean {
+    const events = StorageUtils.getEvents()
+    const newEvent: Event = {
+      ...event,
+      id: this.nextEventId++,
+      createTime: Date.now(),
+      updateTime: Date.now()
+    }
+    events.push(newEvent)
+    return StorageUtils.saveEvents(events)
+  }
+
+  /**
+   * 更新事件
+   */
+  static updateEvent(event: Event): boolean {
+    const events = StorageUtils.getEvents()
+    const index = events.findIndex(e => e.id === event.id)
+    if (index === -1) return false
+
+    event.updateTime = Date.now()
+    events[index] = event
+    return StorageUtils.saveEvents(events)
+  }
+
+  /**
+   * 终止事件
+   */
+  static terminateEvent(eventId: number): boolean {
+    const events = StorageUtils.getEvents()
+    const index = events.findIndex(e => e.id === eventId)
+    if (index === -1) return false
+
+    events[index].isTerminated = true
+    events[index].updateTime = Date.now()
+    return StorageUtils.saveEvents(events)
+  }
+
+  /**
+   * 删除事件
+   */
+  static deleteEvent(eventId: number): boolean {
+    let events = StorageUtils.getEvents()
+    events = events.filter(e => e.id !== eventId)
+    const success = StorageUtils.saveEvents(events)
+
+    // 同时删除相关的完成记录
+    if (success) {
+      let records = StorageUtils.getCompletionRecords()
+      records = records.filter(r => r.eventId !== eventId)
+      StorageUtils.saveCompletionRecords(records)
+    }
+
+    return success
+  }
+
+  /**
+   * 检查事件今天是否已完成
+   */
+  static isEventCompletedToday(eventId: number): boolean {
+    const records = StorageUtils.getCompletionRecords()
+    const eventRecords = records.filter(r => r.eventId === eventId)
+
+    if (eventRecords.length === 0) return false
+
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000
+
+    return eventRecords.some(r => r.lastCompleteDate >= todayStart && r.lastCompleteDate < todayEnd)
+  }
+
+  /**
+   * 标记事件完成
+   */
+  static markEventComplete(eventId: number): boolean {
+    // 检查今天是否已完成
+    if (this.isEventCompletedToday(eventId)) {
+      return false
+    }
+
+    const records = StorageUtils.getCompletionRecords()
+    const newRecord: CompletionRecord = {
+      id: this.nextRecordId++,
+      eventId: eventId,
+      lastCompleteDate: Date.now(),
+      createTime: Date.now()
+    }
+    records.push(newRecord)
+    return StorageUtils.saveCompletionRecords(records)
+  }
+
+  /**
+   * 获取事件的历史完成记录
+   */
+  static getEventHistory(eventId: number): CompletionRecord[] {
+    const records = StorageUtils.getCompletionRecords()
+    return records
+      .filter(r => r.eventId === eventId)
+      .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)
+  }
+
+  /**
+   * 获取单个事件
+   */
+  static getEventById(eventId: number): Event | null {
+    const events = StorageUtils.getEvents()
+    return events.find(e => e.id === eventId) || null
+  }
+}

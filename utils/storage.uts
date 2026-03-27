@@ -1,0 +1,122 @@
+/**
+ * 本地存储工具类
+ */
+export class StorageUtils {
+  // 存储键名常量
+  static readonly EVENTS_KEY = 'donelog_events'
+  static readonly COMPLETION_RECORDS_KEY = 'donelog_completion_records'
+  static readonly LABELS_KEY = 'donelog_labels'
+
+  /**
+   * 获取所有事件
+   */
+  static getEvents(): Event[] {
+    try {
+      const data = uni.getStorageSync(this.EVENTS_KEY)
+      return data ? JSON.parse(data) : []
+    } catch (e) {
+      console.error('获取事件列表失败', e)
+      return []
+    }
+  }
+
+  /**
+   * 保存事件列表
+   */
+  static saveEvents(events: Event[]): boolean {
+    try {
+      uni.setStorageSync(this.EVENTS_KEY, JSON.stringify(events))
+      return true
+    } catch (e) {
+      console.error('保存事件列表失败', e)
+      return false
+    }
+  }
+
+  /**
+   * 获取所有完成记录
+   */
+  static getCompletionRecords(): CompletionRecord[] {
+    try {
+      const data = uni.getStorageSync(this.COMPLETION_RECORDS_KEY)
+      return data ? JSON.parse(data) : []
+    } catch (e) {
+      console.error('获取完成记录失败', e)
+      return []
+    }
+  }
+
+  /**
+   * 保存完成记录列表
+   */
+  static saveCompletionRecords(records: CompletionRecord[]): boolean {
+    try {
+      uni.setStorageSync(this.COMPLETION_RECORDS_KEY, JSON.stringify(records))
+      return true
+    } catch (e) {
+      console.error('保存完成记录失败', e)
+      return false
+    }
+  }
+
+  /**
+   * 获取所有标签
+   */
+  static getLabels(): Label[] {
+    try {
+      const data = uni.getStorageSync(this.LABELS_KEY)
+      return data ? JSON.parse(data) : []
+    } catch (e) {
+      console.error('获取标签列表失败', e)
+      return []
+    }
+  }
+
+  /**
+   * 保存标签列表
+   */
+  static saveLabels(labels: Label[]): boolean {
+    try {
+      uni.setStorageSync(this.LABELS_KEY, JSON.stringify(labels))
+      return true
+    } catch (e) {
+      console.error('保存标签列表失败', e)
+      return false
+    }
+  }
+}
+
+/**
+ * 事件类型定义
+ */
+export type Event = {
+  id: number
+  name: string
+  labelIdList: string
+  intervalDays: number
+  nextDueDate: number
+  remark: string
+  isTerminated: boolean
+  createTime: number
+  updateTime: number
+}
+
+/**
+ * 事件完成记录类型定义
+ */
+export type CompletionRecord = {
+  id: number
+  eventId: number
+  lastCompleteDate: number
+  createTime: number
+}
+
+/**
+ * 标签类型定义
+ */
+export type Label = {
+  id: number
+  name: string
+  color: string
+  sortOrder: number
+}

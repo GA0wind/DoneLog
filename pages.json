@@ -1,0 +1,72 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "DoneLog"
+			}
+		},
+		{
+			"path": "pages/event/add",
+			"style": {
+				"navigationBarTitleText": "新增事件"
+			}
+		},
+		{
+			"path": "pages/event/edit",
+			"style": {
+				"navigationBarTitleText": "编辑事件"
+			}
+		},
+		{
+			"path": "pages/event/detail",
+			"style": {
+				"navigationBarTitleText": "事件详情"
+			}
+		},
+		{
+			"path": "pages/label/index",
+			"style": {
+				"navigationBarTitleText": "标签管理"
+			}
+		},
+		{
+			"path": "pages/calendar/index",
+			"style": {
+				"navigationBarTitleText": "日历"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "DoneLog",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+		"color": "#7A7E83",
+		"selectedColor": "#3cc51f",
+		"borderStyle": "black",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"iconPath": "static/tab-home.png",
+				"selectedIconPath": "static/tab-home-active.png",
+				"text": "事件"
+			},
+			{
+				"pagePath": "pages/label/index",
+				"iconPath": "static/tab-label.png",
+				"selectedIconPath": "static/tab-label-active.png",
+				"text": "标签"
+			},
+			{
+				"pagePath": "pages/calendar/index",
+				"iconPath": "static/tab-calendar.png",
+				"selectedIconPath": "static/tab-calendar-active.png",
+				"text": "日历"
+			}
+		]
+	}
+}

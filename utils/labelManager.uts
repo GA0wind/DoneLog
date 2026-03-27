@@ -1,0 +1,114 @@
+import { StorageUtils, Label } from './storage.uts'
+
+/**
+ * 标签管理工具类
+ */
+export class LabelManager {
+  private static nextLabelId: number = 1
+
+  /**
+   * 初始化ID
+   */
+  static initIds(): void {
+    const labels = StorageUtils.getLabels()
+    if (labels.length > 0) {
+      this.nextLabelId = Math.max(...labels.map(l => l.id)) + 1
+    }
+  }
+
+  /**
+   * 获取排序后的标签列表
+   */
+  static getSortedLabels(): Label[] {
+    const labels = StorageUtils.getLabels()
+    return labels.sort((a, b) => a.sortOrder - b.sortOrder)
+  }
+
+  /**
+   * 添加标签
+   */
+  static addLabel(name: string, color: string = '#007AFF'): boolean {
+    const labels = StorageUtils.getLabels()
+    const maxSortOrder = labels.length > 0 ? Math.max(...labels.map(l => l.sortOrder)) : 0
+
+    const newLabel: Label = {
+      id: this.nextLabelId++,
+      name: name,
+      color: color,
+      sortOrder: maxSortOrder + 1
+    }
+
+    labels.push(newLabel)
+    return StorageUtils.saveLabels(labels)
+  }
+
+  /**
+   * 更新标签
+   */
+  static updateLabel(label: Label): boolean {
+    const labels = StorageUtils.getLabels()
+    const index = labels.findIndex(l => l.id === label.id)
+    if (index === -1) return false
+
+    labels[index] = label
+    return StorageUtils.saveLabels(labels)
+  }
+
+  /**
+   * 删除标签
+   */
+  static deleteLabel(labelId: number): boolean {
+    const labels = StorageUtils.getLabels()
+    const index = labels.findIndex(l => l.id === labelId)
+    if (index === -1) return false
+
+    labels.splice(index, 1)
+    return StorageUtils.saveLabels(labels)
+  }
+
+  /**
+   * 更新标签排序
+   */
+  static updateLabelOrder(labelId: number, newOrder: number): boolean {
+    const labels = StorageUtils.getLabels()
+    const label = labels.find(l => l.id === labelId)
+    if (!label) return false
+
+    const oldOrder = label.sortOrder
+    if (oldOrder === newOrder) return true
+
+    // 更新其他标签的排序
+    labels.forEach(l => {
+      if (l.id !== labelId) {
+        if (newOrder > oldOrder) {
+          if (l.sortOrder > oldOrder && l.sortOrder <= newOrder) {
+            l.sortOrder--
+          }
+        } else {
+          if (l.sortOrder >= newOrder && l.sortOrder < oldOrder) {
+            l.sortOrder++
+          }
+        }
+      }
+    })
+
+    label.sortOrder = newOrder
+    return StorageUtils.saveLabels(labels)
+  }
+
+  /**
+   * 获取单个标签
+   */
+  static getLabelById(labelId: number): Label | null {
+    const labels = StorageUtils.getLabels()
+    return labels.find(l => l.id === labelId) || null
+  }
+
+  /**
+   * 根据ID列表获取标签
+   */
+  static getLabelsByIds(labelIds: number[]): Label[] {
+    const labels = StorageUtils.getLabels()
+    return labels.filter(l => labelIds.includes(l.id))
+  }
+}

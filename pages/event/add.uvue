@@ -1,0 +1,570 @@
+<template>
+	<view class="container">
+		<view class="form">
+			<!-- 事件名称 -->
+			<view class="form-item">
+				<text class="label">事件名称 *</text>
+				<input class="input" v-model="eventName" placeholder="请输入事件名称" />
+			</view>
+
+			<!-- 标签选择 -->
+			<view class="form-item">
+				<text class="label">选择标签</text>
+				<view class="tag-selector" @click="showLabelModal">
+					<view class="selected-tags">
+						<text 
+							class="tag" 
+							v-for="labelId in selectedLabelIds" 
+							:key="labelId"
+							:style="{ backgroundColor: getLabelColor(labelId) }"
+						>
+							{{getLabelName(labelId)}}
+						</text>
+						<text class="placeholder" v-if="selectedLabelIds.length === 0">请选择标签</text>
+					</view>
+					<text class="arrow">▼</text>
+				</view>
+			</view>
+
+			<!-- 重复方式选择 -->
+			<view class="form-item">
+				<text class="label">重复方式</text>
+				<radio-group @change="onRepeatTypeChange">
+					<label class="radio-item">
+						<radio value="interval" :checked="repeatType === 'interval'" />
+						<text>按间隔天数</text>
+					</label>
+					<label class="radio-item">
+						<radio value="date" :checked="repeatType === 'date'" />
+						<text>自定义下次完成时间</text>
+					</label>
+				</radio-group>
+			</view>
+
+			<!-- 间隔天数 -->
+			<view class="form-item" v-if="repeatType === 'interval'">
+				<text class="label">间隔天数</text>
+				<input 
+					class="input" 
+					type="number" 
+					v-model="intervalDays" 
+					placeholder="请输入间隔天数" 
+				/>
+			</view>
+
+			<!-- 下次完成时间 -->
+			<view class="form-item" v-if="repeatType === 'date'">
+				<text class="label">下次完成时间</text>
+				<picker mode="date" :value="nextDueDate" @change="onDateChange">
+					<view class="picker">
+						<text>{{nextDueDate || '请选择日期'}}</text>
+					</view>
+				</picker>
+			</view>
+
+			<!-- 备注 -->
+			<view class="form-item">
+				<text class="label">备注</text>
+				<textarea class="textarea" v-model="remark" placeholder="请输入备注（可选）" />
+			</view>
+
+			<!-- 保存按钮 -->
+			<button class="save-btn" @click="saveEvent">保存</button>
+		</view>
+
+		<!-- 标签选择弹窗 -->
+		<view class="modal" v-if="showLabelSelector" @click="hideLabelModal">
+			<view class="modal-content" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">选择标签</text>
+				</view>
+				<scroll-view scroll-y class="modal-body">
+					<view class="label-list">
+						<view 
+							class="label-item" 
+							v-for="label in labels" 
+							:key="label.id"
+							:class="{ 'selected': selectedLabelIds.includes(label.id) }"
+							@click="toggleLabel(label.id)"
+						>
+							<view class="label-info">
+								<view class="label-color" :style="{ backgroundColor: label.color }"></view>
+								<text class="label-name">{{label.name}}</text>
+							</view>
+							<text class="check-icon" v-if="selectedLabelIds.includes(label.id)">✓</text>
+						</view>
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="add-label-btn" @click="showAddLabel">新增标签</button>
+					<button class="confirm-btn" @click="confirmLabels">确定</button>
+				</view>
+			</view>
+		</view>
+
+		<!-- 新增标签弹窗 -->
+		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
+			<view class="modal-content" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">新增标签</text>
+				</view>
+				<view class="modal-body">
+					<view class="form-item">
+						<text class="label">标签名称</text>
+						<input class="input" v-model="newLabelName" placeholder="请输入标签名称" />
+					</view>
+					<view class="form-item">
+						<text class="label">标签颜色</text>
+						<view class="color-options">
+							<view 
+								class="color-option" 
+								v-for="color in colorOptions" 
+								:key="color"
+								:class="{ 'selected': newLabelColor === color }"
+								:style="{ backgroundColor: color }"
+								@click="newLabelColor = color"
+							>
+								<text v-if="newLabelColor === color" class="check-icon">✓</text>
+							</view>
+						</view>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click="hideAddLabelModal">取消</button>
+					<button class="confirm-btn" @click="addNewLabel">确定</button>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { EventManager } from '@/utils/eventManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { Event } from '@/utils/storage.uts'
+
+	// 响应式数据
+	const eventName = ref('')
+	const selectedLabelIds = ref<number[]>([])
+	const labels = ref<Label[]>([])
+	const repeatType = ref<'interval' | 'date'>('interval')
+	const intervalDays = ref('')
+	const nextDueDate = ref('')
+	const remark = ref('')
+	const showLabelSelector = ref(false)
+	const showAddLabelModal = ref(false)
+	const newLabelName = ref('')
+	const newLabelColor = ref('#007AFF')
+
+	// 预设颜色选项
+	const colorOptions = [
+		'#007AFF', // 蓝色
+		'#FF3B30', // 红色
+		'#FF9500', // 橙色
+		'#FFCC00', // 黄色
+		'#4CD964', // 绿色
+		'#5AC8FA', // 浅蓝
+		'#5856D6', // 紫色
+		'#FF2D55', // 粉色
+		'#8E8E93', // 灰色
+		'#34C759'  // 深绿
+	]
+
+	// 加载标签列表
+	const loadLabels = () => {
+		labels.value = LabelManager.getSortedLabels()
+	}
+
+	// 切换标签选择
+	const toggleLabel = (labelId: number) => {
+		const index = selectedLabelIds.value.indexOf(labelId)
+		if (index > -1) {
+			selectedLabelIds.value.splice(index, 1)
+		} else {
+			selectedLabelIds.value.push(labelId)
+		}
+	}
+
+	// 显示标签选择弹窗
+	const showLabelModal = () => {
+		showLabelSelector.value = true
+	}
+
+	// 隐藏标签选择弹窗
+	const hideLabelModal = () => {
+		showLabelSelector.value = false
+	}
+
+	// 确认标签选择
+	const confirmLabels = () => {
+		hideLabelModal()
+	}
+
+	// 显示新增标签弹窗
+	const showAddLabel = () => {
+		newLabelName.value = ''
+		newLabelColor.value = '#007AFF'
+		showAddLabelModal.value = true
+	}
+
+	// 隐藏新增标签弹窗
+	const hideAddLabelModal = () => {
+		showAddLabelModal.value = false
+	}
+
+	// 新增标签
+	const addNewLabel = () => {
+		if (!newLabelName.value.trim()) {
+			uni.showToast({
+				title: '请输入标签名称',
+				icon: 'none'
+			})
+			return
+		}
+
+		const success = LabelManager.addLabel(newLabelName.value, newLabelColor.value)
+		if (success) {
+			uni.showToast({
+				title: '添加成功',
+				icon: 'success'
+			})
+			loadLabels()
+			hideAddLabelModal()
+		} else {
+			uni.showToast({
+				title: '添加失败',
+				icon: 'none'
+			})
+		}
+	}
+
+	// 获取标签名称
+	const getLabelName = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.name : ''
+	}
+
+	// 获取标签颜色
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.color : '#007AFF'
+	}
+
+	// 重复方式改变
+	const onRepeatTypeChange = (e: any) => {
+		repeatType.value = e.detail.value
+	}
+
+	// 日期改变
+	const onDateChange = (e: any) => {
+		nextDueDate.value = e.detail.value
+	}
+
+	// 保存事件
+	const saveEvent = () => {
+		if (!eventName.value.trim()) {
+			uni.showToast({
+				title: '请输入事件名称',
+				icon: 'none'
+			})
+			return
+		}
+
+		if (repeatType.value === 'interval' && !intervalDays.value) {
+			uni.showToast({
+				title: '请输入间隔天数',
+				icon: 'none'
+			})
+			return
+		}
+
+		if (repeatType.value === 'date' && !nextDueDate.value) {
+			uni.showToast({
+				title: '请选择下次完成时间',
+				icon: 'none'
+			})
+			return
+		}
+
+		const event: Omit<Event, 'id' | 'createTime' | 'updateTime'> = {
+			name: eventName.value,
+			labelIdList: selectedLabelIds.value.join(','),
+			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
+			nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
+			remark: remark.value,
+			isTerminated: false
+		}
+
+		const success = EventManager.addEvent(event)
+		if (success) {
+			uni.showToast({
+				title: '保存成功',
+				icon: 'success'
+			})
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 1500)
+		} else {
+			uni.showToast({
+				title: '保存失败',
+				icon: 'none'
+			})
+		}
+	}
+
+	// 页面加载时获取标签
+	onLoad(() => {
+		loadLabels()
+	})
+</script>
+
+<style>
+	.container {
+		padding: 15px;
+		background-color: #f5f5f5;
+		min-height: 100vh;
+	}
+
+	.form {
+		background-color: #fff;
+		border-radius: 10px;
+		padding: 15px;
+	}
+
+	.form-item {
+		margin-bottom: 20px;
+	}
+
+	.label {
+		display: block;
+		font-size: 14px;
+		color: #333;
+		margin-bottom: 8px;
+		font-weight: 500;
+	}
+
+	.input {
+		width: 100%;
+		height: 44px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 0 15px;
+		font-size: 14px;
+	}
+
+	.tags-container {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.tag-selector {
+		min-height: 44px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 8px 12px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.selected-tags {
+		flex: 1;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+
+	.tag {
+		font-size: 12px;
+		color: #fff;
+		padding: 2px 8px;
+		border-radius: 10px;
+		margin-right: 5px;
+		margin-bottom: 5px;
+	}
+
+	.placeholder {
+		font-size: 14px;
+		color: #999;
+	}
+
+	.arrow {
+		margin-left: 10px;
+		font-size: 12px;
+		color: #999;
+	}
+
+	.textarea {
+		width: 100%;
+		min-height: 100px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 10px 15px;
+		font-size: 14px;
+	}
+
+	.radio-item {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.radio-item text {
+		margin-left: 8px;
+		font-size: 14px;
+	}
+
+	.picker {
+		height: 44px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 0 15px;
+		justify-content: center;
+		font-size: 14px;
+	}
+
+	.save-btn {
+		background-color: #007AFF;
+		color: #fff;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 16px;
+		margin-top: 20px;
+	}
+
+	/* 弹窗样式 */
+	.modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		justify-content: center;
+		align-items: center;
+		z-index: 1000;
+	}
+
+	.modal-content {
+		background-color: #fff;
+		border-radius: 10px;
+		width: 85%;
+		max-height: 70vh;
+	}
+
+	.modal-header {
+		padding: 15px;
+		border-bottom: 1px solid #f0f0f0;
+	}
+
+	.modal-title {
+		font-size: 18px;
+		font-weight: bold;
+		color: #333;
+		text-align: center;
+	}
+
+	.modal-body {
+		padding: 15px;
+		max-height: 400px;
+	}
+
+	.label-list {
+		max-height: 300px;
+	}
+
+	.label-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 12px;
+		border-bottom: 1px solid #f5f5f5;
+	}
+
+	.label-item.selected {
+		background-color: #f0f8ff;
+	}
+
+	.label-info {
+		flex-direction: row;
+		align-items: center;
+		flex: 1;
+	}
+
+	.label-color {
+		width: 20px;
+		height: 20px;
+		border-radius: 10px;
+		margin-right: 10px;
+	}
+
+	.label-name {
+		font-size: 16px;
+		color: #333;
+	}
+
+	.check-icon {
+		font-size: 20px;
+		color: #007AFF;
+		font-weight: bold;
+	}
+
+	.modal-footer {
+		flex-direction: row;
+		padding: 15px;
+		border-top: 1px solid #f0f0f0;
+	}
+
+	.add-label-btn {
+		flex: 1;
+		background-color: #f5f5f5;
+		color: #333;
+		height: 40px;
+		line-height: 40px;
+		border-radius: 20px;
+		font-size: 16px;
+		margin-right: 10px;
+	}
+
+	.cancel-btn {
+		flex: 1;
+		background-color: #f5f5f5;
+		color: #333;
+		height: 40px;
+		line-height: 40px;
+		border-radius: 20px;
+		font-size: 16px;
+		margin-right: 10px;
+	}
+
+	.confirm-btn {
+		flex: 1;
+		background-color: #007AFF;
+		color: #fff;
+		height: 40px;
+		line-height: 40px;
+		border-radius: 20px;
+		font-size: 16px;
+		margin-left: 10px;
+	}
+
+	.color-options {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.color-option {
+		width: 36px;
+		height: 36px;
+		border-radius: 18px;
+		margin-right: 10px;
+		margin-bottom: 10px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.color-option.selected {
+		box-shadow: 0 0 0 2px #fff, 0 0 0 4px #007AFF;
+	}
+</style>

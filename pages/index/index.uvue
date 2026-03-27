@@ -1,0 +1,439 @@
+<template>
+	<view class="container">
+		<!-- 搜索和筛选 -->
+		<view class="filter-bar">
+			<input class="search-input" v-model="searchKeyword" placeholder="搜索事件..." />
+			<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
+				<view class="filter-btn">
+					<text>{{selectedLabel ? selectedLabel.name : '全部标签'}}</text>
+					<text class="arrow">▼</text>
+				</view>
+			</picker>
+			<picker mode="selector" :range="statusOptions" range-key="name" @change="onStatusChange">
+				<view class="filter-btn">
+					<text>{{selectedStatus ? selectedStatus.name : '全部状态'}}</text>
+					<text class="arrow">▼</text>
+				</view>
+			</picker>
+		</view>
+
+		<!-- 事件列表 -->
+		<scroll-view scroll-y class="event-list" @scrolltolower="loadMore">
+			<view 
+				class="event-card" 
+				v-for="event in filteredEvents" 
+				:key="event.id"
+				:class="{ 'overdue': isOverdue(event), 'terminated': event.isTerminated }"
+				@click="goToDetail(event.id)"
+			>
+				<view class="event-header">
+					<text class="event-name">{{event.name}}</text>
+					<text class="event-days" :class="{ 'overdue-text': isOverdue(event) }">
+						{{getDaysText(event)}}
+					</text>
+				</view>
+				<view class="event-remark" v-if="event.remark">
+					<text class="remark-text">{{getShortRemark(event.remark)}}</text>
+				</view>
+				<view class="event-tags">
+					<text 
+						class="tag" 
+						v-for="labelId in event.labelIdList.split(',')" 
+						:key="labelId"
+						:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
+					>
+						{{getLabelName(parseInt(labelId))}}
+					</text>
+				</view>
+				<view class="event-actions" v-if="!event.isTerminated">
+					<button class="action-btn complete-btn" @click.stop="markComplete(event.id)">完成</button>
+				</view>
+				<view class="terminated-badge" v-if="event.isTerminated">
+					<text class="terminated-text">已终止</text>
+				</view>
+			</view>
+			<view class="empty-tip" v-if="filteredEvents.length === 0">
+				<text>暂无事件</text>
+			</view>
+		</scroll-view>
+
+		<!-- 浮动添加按钮 -->
+		<view 
+			class="add-btn" 
+			
+
+			@click="goToAdd"
+		>
+			<text class="add-icon">+</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { EventManager } from '@/utils/eventManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { Event, Label } from '@/utils/storage.uts'
+
+	// 初始化ID
+	EventManager.initIds()
+	LabelManager.initIds()
+
+	// 响应式数据
+	const events = ref<Event[]>([])
+	const labels = ref<Label[]>([])
+	const searchKeyword = ref('')
+	const selectedLabel = ref<Label | null>(null)
+	const labelOptions = ref<Label[]>([{ id: 0, name: '全部标签', color: '', sortOrder: 0 }])
+	const selectedStatus = ref<{ id: number, name: string } | null>({ id: 1, name: '进行中' })
+	const statusOptions = ref<{ id: number, name: string }[]>([
+		{ id: 0, name: '全部状态' },
+		{ id: 1, name: '进行中' },
+		{ id: 2, name: '已终止' }
+	])
+
+	// 获取标签选项
+	const getLabelOptions = () => {
+		const allLabels = LabelManager.getSortedLabels()
+		labelOptions.value = [{ id: 0, name: '全部标签', color: '', sortOrder: 0 }, ...allLabels]
+	}
+
+	// 加载数据
+	const loadData = () => {
+		let showTerminated = false
+		if (selectedStatus.value?.id === 2) {
+			// 只显示已终止
+			showTerminated = true
+		} else if (selectedStatus.value?.id === 1) {
+			// 只显示进行中
+			showTerminated = false
+		} else {
+			// 全部状态：显示进行中和已终止
+			showTerminated = true
+		}
+
+		events.value = EventManager.getSortedEvents(showTerminated, selectedLabel.value?.id || null)
+		labels.value = LabelManager.getSortedLabels()
+		getLabelOptions()
+	}
+
+	// 筛选事件
+	const filteredEvents = computed(() => {
+		if (!searchKeyword.value) {
+			return events.value
+		}
+		return events.value.filter(event => 
+			event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+		)
+	})
+
+	// 获取标签名称
+	const getLabelName = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.name : ''
+	}
+
+	// 获取标签颜色
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.color : '#007AFF'
+	}
+
+	// 获取短备注
+	const getShortRemark = (remark: string): string => {
+		if (!remark) return ''
+		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
+	}
+
+	// 判断是否过期
+	const isOverdue = (event: Event): boolean => {
+		const lastRecord = EventManager.getEventHistory(event.id)[0]
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+		return daysUntilDue < 0
+	}
+
+	// 获取天数文本
+	const getDaysText = (event: Event): string => {
+		const lastRecord = EventManager.getEventHistory(event.id)[0]
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+
+		if (daysUntilDue === 0) {
+			return '今天'
+		} else if (daysUntilDue < 0) {
+			return `已过去 ${Math.abs(daysUntilDue)} 天`
+		} else {
+			return `${daysUntilDue} 天后`
+		}
+	}
+
+	// 标记完成
+	const markComplete = (eventId: number) => {
+		const success = EventManager.markEventComplete(eventId)
+		if (success) {
+			loadData()
+			uni.showToast({
+				title: '已完成',
+				icon: 'success'
+			})
+		} else {
+			uni.showToast({
+				title: '今天已完成过',
+				icon: 'none'
+			})
+		}
+	}
+
+	// 标签筛选改变
+	const onLabelChange = (e: any) => {
+		const index = e.detail.value
+		if (index === 0) {
+			selectedLabel.value = null
+		} else {
+			selectedLabel.value = labelOptions.value[index]
+		}
+		loadData()
+	}
+
+	// 状态筛选改变
+	const onStatusChange = (e: any) => {
+		const index = e.detail.value
+		if (index === 0) {
+			selectedStatus.value = null
+		} else {
+			selectedStatus.value = statusOptions.value[index]
+		}
+		loadData()
+	}
+
+	// 跳转到添加页面
+	const goToAdd = () => {
+		uni.navigateTo({
+			url: '/pages/event/add'
+		})
+	}
+
+	// 跳转到详情页面
+	const goToDetail = (eventId: number) => {
+		uni.navigateTo({
+			url: `/pages/event/detail?id=${eventId}`
+		})
+	}
+
+	// 加载更多
+	const loadMore = () => {
+		// 预留分页功能
+	}
+
+	// 下拉刷新
+	onPullDownRefresh(() => {
+		loadData()
+		uni.stopPullDownRefresh()
+	})
+
+	// 添加按钮拖动
+	const addBtnX = ref(0)
+	const addBtnY = ref(0)
+	const isDragging = ref(false)
+	const startX = ref(0)
+	const startY = ref(0)
+	const btnStartX = ref(0)
+	const btnStartY = ref(0)
+
+	// 初始化按钮位置
+	const initBtnPosition = () => {
+		const systemInfo = uni.getSystemInfoSync()
+		addBtnX.value = systemInfo.windowWidth - 76
+		addBtnY.value = systemInfo.windowHeight - 200
+	}
+
+	// 触摸开始
+	const onTouchStart = (e: any) => {
+		isDragging.value = false
+		startX.value = e.touches[0].clientX
+		startY.value = e.touches[0].clientY
+		btnStartX.value = addBtnX.value
+		btnStartY.value = addBtnY.value
+	}
+
+	// 触摸移动
+	const onTouchMove = (e: any) => {
+		const deltaX = e.touches[0].clientX - startX.value
+		const deltaY = e.touches[0].clientY - startY.value
+
+		// 如果移动距离超过10px，则认为是拖动
+		if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+			isDragging.value = true
+		}
+
+		if (isDragging.value) {
+			const systemInfo = uni.getSystemInfoSync()
+			const maxX = systemInfo.windowWidth - 56
+			const maxY = systemInfo.windowHeight - 100
+
+			addBtnX.value = Math.max(0, Math.min(maxX, btnStartX.value + deltaX))
+			addBtnY.value = Math.max(0, Math.min(maxY, btnStartY.value + deltaY))
+		}
+	}
+
+	// 触摸结束
+	const onTouchEnd = () => {
+		isDragging.value = false
+	}
+
+	// 页面显示时加载数据
+	onShow(() => {
+		loadData()
+		initBtnPosition()
+	})
+</script>
+
+<style>
+	.container {
+		flex: 1;
+		background-color: #f5f5f5;
+		padding-bottom: 100px;
+	}
+
+	/* 搜索和筛选 */
+	.filter-bar {
+		background-color: #fff;
+		padding: 10px 15px;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.search-input {
+		flex: 1;
+		height: 36px;
+		background-color: #f5f5f5;
+		border-radius: 18px;
+		padding: 0 15px;
+		font-size: 14px;
+		margin-right: 10px;
+	}
+
+	.filter-btn {
+		flex-direction: row;
+		align-items: center;
+		padding: 5px 12px;
+		background-color: #f5f5f5;
+		border-radius: 15px;
+		font-size: 14px;
+	}
+
+	.arrow {
+		margin-left: 5px;
+		font-size: 12px;
+	}
+
+	/* 事件列表 */
+	.event-list {
+		height: calc(100vh - 200px);
+		padding: 0 15px;
+	}
+
+	.event-card {
+		background-color: #fff;
+		border-radius: 10px;
+		padding: 12px 15px;
+		margin-bottom: 8px;
+	}
+
+	.event-card.overdue {
+		border-left: 3px solid #ff4d4f;
+	}
+
+	.event-card.terminated {
+		opacity: 0.5;
+	}
+
+	.event-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 6px;
+	}
+
+	.event-name {
+		font-size: 20px;
+		color: #333;
+		font-weight: bold;
+		flex: 1;
+	}
+
+	.event-days {
+		font-size: 14px;
+		color: #999;
+	}
+
+	.event-days.overdue-text {
+		color: #ff4d4f;
+	}
+
+	.event-tags {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 6px;
+	}
+
+	.tag {
+		font-size: 12px;
+		color: #fff;
+		padding: 2px 8px;
+		border-radius: 10px;
+		margin-right: 5px;
+		margin-bottom: 5px;
+	}
+
+	.event-remark {
+		margin-bottom: 6px;
+	}
+
+	.remark-text {
+		font-size: 13px;
+		color: #999;
+		line-height: 1.5;
+	}
+
+	.event-actions {
+		flex-direction: row;
+		justify-content: flex-end;
+	}
+
+	.action-btn {
+		margin-left: 10px;
+		font-size: 14px;
+		padding: 5px 12px;
+		background-color: #4CAF50;
+		color: #fff;
+		border-radius: 15px;
+	}
+
+	/* 空状态 */
+	.empty-tip {
+		text-align: center;
+		padding: 50px 0;
+		color: #999;
+	}
+
+	/* 添加按钮 */
+	.add-btn {
+		position: fixed;
+		width: 56px;
+		height: 56px;
+		background-color: #007AFF;
+		border-radius: 28px;
+		justify-content: center;
+		align-items: center;
+		box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+		z-index: 1000;
+		bottom: 70px;
+		right: 20px;
+	}
+
+	.add-icon {
+		font-size: 32px;
+		color: #fff;
+		font-weight: 300;
+	}
+</style>

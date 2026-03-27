@@ -1,0 +1,359 @@
+<template>
+	<view class="container">
+		<!-- 事件信息卡片 -->
+		<view class="event-info">
+			<view class="event-header">
+				<text class="event-name">{{event?.name}}</text>
+				<view class="event-status" :class="{ 'overdue': isOverdue }">
+					<text class="status-text">{{statusText}}</text>
+				</view>
+			</view>
+
+			<view class="event-tags">
+				<text 
+					class="tag" 
+					v-for="labelId in event?.labelIdList.split(',')" 
+					:key="labelId"
+					:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
+				>
+					{{getLabelName(parseInt(labelId))}}
+				</text>
+			</view>
+
+			<view class="event-details">
+				<view class="detail-item" v-if="event?.intervalDays > 0">
+					<text class="detail-label">间隔天数：</text>
+					<text class="detail-value">{{event?.intervalDays}} 天</text>
+				</view>
+				<view class="detail-item" v-if="event?.nextDueDate > 0">
+					<text class="detail-label">下次完成时间：</text>
+					<text class="detail-value">{{formatDate(event?.nextDueDate)}}</text>
+				</view>
+				<view class="detail-item" v-if="event?.remark">
+					<text class="detail-label">备注：</text>
+					<text class="detail-value">{{event?.remark}}</text>
+				</view>
+				<view class="detail-item">
+					<text class="detail-label">创建时间：</text>
+					<text class="detail-value">{{formatDateTime(event?.createTime)}}</text>
+				</view>
+			</view>
+
+			<view class="event-actions">
+				<button class="action-btn edit-btn" @click="goToEdit">编辑</button>
+				<button class="action-btn complete-btn" @click="markComplete">完成</button>
+			</view>
+		</view>
+
+		<!-- 历史记录 -->
+		<view class="history-section">
+			<view class="section-header">
+				<text class="section-title">完成记录</text>
+			</view>
+			<scroll-view scroll-y class="history-list">
+				<view class="history-item" v-for="record in historyRecords" :key="record.id">
+					<view class="history-dot"></view>
+					<view class="history-content">
+						<text class="history-date">{{formatDateTime(record.lastCompleteDate)}}</text>
+						<text class="history-time">{{getTimeText(record.lastCompleteDate)}}</text>
+					</view>
+				</view>
+				<view class="empty-tip" v-if="historyRecords.length === 0">
+					<text>暂无完成记录</text>
+				</view>
+			</scroll-view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { EventManager } from '@/utils/eventManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { Event, Label, CompletionRecord } from '@/utils/storage.uts'
+
+	// 响应式数据
+	const eventId = ref(0)
+	const event = ref<Event | null>(null)
+	const labels = ref<Label[]>([])
+	const historyRecords = ref<CompletionRecord[]>([])
+
+	// 计算属性
+	const isOverdue = computed(() => {
+		if (!event.value) return false
+		const lastRecord = historyRecords.value[0]
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord?.lastCompleteDate || null)
+		return daysUntilDue < 0
+	})
+
+	const statusText = computed(() => {
+		if (!event.value) return ''
+		const lastRecord = historyRecords.value[0]
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord?.lastCompleteDate || null)
+
+		if (daysUntilDue === 0) {
+			return '今天'
+		} else if (daysUntilDue === 1) {
+			return '明天'
+		} else if (daysUntilDue === -1) {
+			return '昨天'
+		} else if (daysUntilDue < 0) {
+			return `已过期 ${Math.abs(daysUntilDue)} 天`
+		} else {
+			return `还有 ${daysUntilDue} 天`
+		}
+	})
+
+	// 格式化日期
+	const formatDate = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const year = date.getFullYear()
+		const month = String(date.getMonth() + 1).padStart(2, '0')
+		const day = String(date.getDate()).padStart(2, '0')
+		return `${year}-${month}-${day}`
+	}
+
+	// 格式化日期时间
+	const formatDateTime = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const year = date.getFullYear()
+		const month = String(date.getMonth() + 1).padStart(2, '0')
+		const day = String(date.getDate()).padStart(2, '0')
+		return `${year}-${month}-${day}`
+	}
+
+	// 获取时间文本
+	const getTimeText = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const hours = String(date.getHours()).padStart(2, '0')
+		const minutes = String(date.getMinutes()).padStart(2, '0')
+		return `${hours}:${minutes}`
+	}
+
+	// 获取标签名称
+	const getLabelName = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.name : ''
+	}
+
+	// 获取标签颜色
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(l => l.id === labelId)
+		return label ? label.color : '#007AFF'
+	}
+
+	// 跳转到编辑页面
+	const goToEdit = () => {
+		uni.navigateTo({
+			url: `/pages/event/edit?id=${eventId.value}`
+		})
+	}
+
+	// 标记完成
+	const markComplete = () => {
+		EventManager.markEventComplete(eventId.value)
+		uni.showToast({
+			title: '已完成',
+			icon: 'success'
+		})
+		loadEventData()
+	}
+
+	// 加载事件数据
+	const loadEventData = () => {
+		event.value = EventManager.getEventById(eventId.value)
+		labels.value = LabelManager.getSortedLabels()
+		historyRecords.value = EventManager.getEventHistory(eventId.value)
+	}
+
+	// 页面加载时获取数据
+	onLoad((options: any) => {
+		if (options.id) {
+			eventId.value = parseInt(options.id)
+			loadEventData()
+		} else {
+			uni.showToast({
+				title: '参数错误',
+				icon: 'none'
+			})
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 1500)
+		}
+	})
+
+	// 页面显示时刷新数据
+	onShow(() => {
+		loadEventData()
+	})
+</script>
+
+<style>
+	.container {
+		background-color: #f5f5f5;
+		min-height: 100vh;
+		padding: 15px;
+	}
+
+	/* 事件信息卡片 */
+	.event-info {
+		background-color: #fff;
+		border-radius: 10px;
+		padding: 15px;
+		margin-bottom: 15px;
+	}
+
+	.event-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 15px;
+	}
+
+	.event-name {
+		font-size: 18px;
+		font-weight: bold;
+		color: #333;
+		flex: 1;
+	}
+
+	.event-status {
+		padding: 4px 12px;
+		border-radius: 12px;
+		background-color: #e6f7ff;
+	}
+
+	.event-status.overdue {
+		background-color: #fff1f0;
+	}
+
+	.status-text {
+		font-size: 12px;
+		color: #1890ff;
+	}
+
+	.event-status.overdue .status-text {
+		color: #ff4d4f;
+	}
+
+	.event-tags {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 15px;
+	}
+
+	.tag {
+		font-size: 12px;
+		color: #fff;
+		padding: 2px 8px;
+		border-radius: 10px;
+		margin-right: 5px;
+		margin-bottom: 5px;
+	}
+
+	.event-details {
+		border-top: 1px solid #f0f0f0;
+		padding-top: 15px;
+		margin-bottom: 15px;
+	}
+
+	.detail-item {
+		flex-direction: row;
+		margin-bottom: 8px;
+	}
+
+	.detail-label {
+		font-size: 14px;
+		color: #666;
+		width: 120px;
+	}
+
+	.detail-value {
+		font-size: 14px;
+		color: #333;
+		flex: 1;
+	}
+
+	.event-actions {
+		flex-direction: row;
+		justify-content: space-between;
+	}
+
+	.action-btn {
+		flex: 1;
+		height: 40px;
+		line-height: 40px;
+		border-radius: 20px;
+		font-size: 14px;
+	}
+
+	.edit-btn {
+		background-color: #fff;
+		border: 1px solid #d9d9d9;
+		color: #333;
+		margin-right: 10px;
+	}
+
+	.complete-btn {
+		background-color: #4CAF50;
+		color: #fff;
+		margin-left: 10px;
+	}
+
+	/* 历史记录区域 */
+	.history-section {
+		background-color: #fff;
+		border-radius: 10px;
+		padding: 15px;
+	}
+
+	.section-header {
+		margin-bottom: 15px;
+	}
+
+	.section-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333;
+	}
+
+	.history-list {
+		max-height: 400px;
+	}
+
+	.history-item {
+		flex-direction: row;
+		padding: 10px 0;
+		position: relative;
+	}
+
+	.history-dot {
+		width: 10px;
+		height: 10px;
+		background-color: #1890ff;
+		border-radius: 5px;
+		margin-right: 15px;
+		margin-top: 5px;
+	}
+
+	.history-content {
+		flex: 1;
+		flex-direction: column;
+	}
+
+	.history-date {
+		font-size: 14px;
+		color: #333;
+		margin-bottom: 4px;
+	}
+
+	.history-time {
+		font-size: 12px;
+		color: #999;
+	}
+
+	.empty-tip {
+		text-align: center;
+		padding: 30px 0;
+		color: #999;
+	}
+</style>
