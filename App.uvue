@@ -1,6 +1,7 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AccountManager } from '@/utils/accountManager.uts'
 
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0
@@ -11,6 +12,7 @@
 		// 初始化ID
 		EventManager.initIds()
 		LabelManager.initIds()
+		AccountManager.initIds()
 	})
 
 	onAppShow(() => {
@@ -46,12 +48,17 @@
 </script>
 
 <style>
-	/*每个页面公共css */
+	/* 每个页面公共css */
 	.uni-row {
 		flex-direction: row;
 	}
 
 	.uni-column {
 		flex-direction: column;
+	}
+
+	page {
+		background-color: #f4efe7;
+		color: #24323a;
 	}
 </style>

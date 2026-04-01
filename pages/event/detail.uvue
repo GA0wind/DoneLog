@@ -12,7 +12,7 @@
 			<view class="event-tags">
 				<text 
 					class="tag" 
-					v-for="labelId in event?.labelIdList.split(',')" 
+					v-for="labelId in getEventLabelIds()" 
 					:key="labelId"
 					:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
 				>
@@ -41,7 +41,7 @@
 
 			<view class="event-actions">
 				<button class="action-btn edit-btn" @click="goToEdit">编辑</button>
-				<button class="action-btn complete-btn" @click="markComplete">完成</button>
+				<button class="action-btn complete-btn" v-if="canComplete" @click="markComplete">完成</button>
 			</view>
 		</view>
 
@@ -80,14 +80,28 @@
 	// 计算属性
 	const isOverdue = computed(() => {
 		if (!event.value) return false
+		if (EventManager.isFixedDateCompleted(event.value, historyRecords.value[0]?.lastCompleteDate || null)) {
+			return false
+		}
 		const lastRecord = historyRecords.value[0]
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord?.lastCompleteDate || null)
 		return daysUntilDue < 0
 	})
 
+	const canComplete = computed(() => {
+		if (!event.value || event.value.isTerminated) return false
+		return !EventManager.isFixedDateCompleted(event.value, historyRecords.value[0]?.lastCompleteDate || null)
+	})
+
 	const statusText = computed(() => {
 		if (!event.value) return ''
+		if (event.value.isTerminated) return '已终止'
+
 		const lastRecord = historyRecords.value[0]
+		if (EventManager.isFixedDateCompleted(event.value, lastRecord?.lastCompleteDate || null)) {
+			return '已完成'
+		}
+
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord?.lastCompleteDate || null)
 
 		if (daysUntilDue === 0) {
@@ -118,7 +132,17 @@
 		const year = date.getFullYear()
 		const month = String(date.getMonth() + 1).padStart(2, '0')
 		const day = String(date.getDate()).padStart(2, '0')
-		return `${year}-${month}-${day}`
+		const hours = String(date.getHours()).padStart(2, '0')
+		const minutes = String(date.getMinutes()).padStart(2, '0')
+		return `${year}-${month}-${day} ${hours}:${minutes}`
+	}
+
+	const getEventLabelIds = (): number[] => {
+		if (!event.value?.labelIdList) return []
+		return event.value.labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id))
 	}
 
 	// 获取时间文本
@@ -150,12 +174,27 @@
 
 	// 标记完成
 	const markComplete = () => {
-		EventManager.markEventComplete(eventId.value)
+		if (event.value?.nextDueDate && event.value.nextDueDate > 0) {
+			uni.navigateTo({
+				url: `/pages/event/complete?id=${eventId.value}`
+			})
+			return
+		}
+
+		const success = EventManager.markEventComplete(eventId.value)
+		if (success) {
+			uni.showToast({
+				title: '已完成',
+				icon: 'success'
+			})
+			loadEventData()
+			return
+		}
+
 		uni.showToast({
-			title: '已完成',
-			icon: 'success'
+			title: '今天已完成过或事件不可操作',
+			icon: 'none'
 		})
-		loadEventData()
 	}
 
 	// 加载事件数据
@@ -189,17 +228,21 @@
 
 <style>
 	.container {
-		background-color: #f5f5f5;
+		background-color: #f4efe7;
 		min-height: 100vh;
 		padding: 15px;
 	}
 
 	/* 事件信息卡片 */
 	.event-info {
-		background-color: #fff;
-		border-radius: 10px;
-		padding: 15px;
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
 		margin-bottom: 15px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
 	}
 
 	.event-header {
@@ -210,29 +253,29 @@
 	}
 
 	.event-name {
-		font-size: 18px;
+		font-size: 20px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
 		flex: 1;
 	}
 
 	.event-status {
-		padding: 4px 12px;
-		border-radius: 12px;
-		background-color: #e6f7ff;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background-color: #e8f4f2;
 	}
 
 	.event-status.overdue {
-		background-color: #fff1f0;
+		background-color: #f8ddd3;
 	}
 
 	.status-text {
 		font-size: 12px;
-		color: #1890ff;
+		color: #1f7a72;
 	}
 
 	.event-status.overdue .status-text {
-		color: #ff4d4f;
+		color: #c45d42;
 	}
 
 	.event-tags {
@@ -263,13 +306,13 @@
 
 	.detail-label {
 		font-size: 14px;
-		color: #666;
+		color: #72808d;
 		width: 120px;
 	}
 
 	.detail-value {
 		font-size: 14px;
-		color: #333;
+		color: #24323a;
 		flex: 1;
 	}
 
@@ -287,23 +330,28 @@
 	}
 
 	.edit-btn {
-		background-color: #fff;
-		border: 1px solid #d9d9d9;
-		color: #333;
+		background-color: #fffdf9;
+		border: 1px solid #e7ddd2;
+		color: #4d5b67;
 		margin-right: 10px;
 	}
 
 	.complete-btn {
-		background-color: #4CAF50;
+		background-color: #1f7a72;
 		color: #fff;
 		margin-left: 10px;
+		box-shadow: 0 12px 22px rgba(31, 122, 114, 0.18);
 	}
 
 	/* 历史记录区域 */
 	.history-section {
-		background-color: #fff;
-		border-radius: 10px;
-		padding: 15px;
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
 	}
 
 	.section-header {
@@ -313,7 +361,7 @@
 	.section-title {
 		font-size: 16px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
 	}
 
 	.history-list {
@@ -329,7 +377,7 @@
 	.history-dot {
 		width: 10px;
 		height: 10px;
-		background-color: #1890ff;
+		background-color: #1f7a72;
 		border-radius: 5px;
 		margin-right: 15px;
 		margin-top: 5px;
@@ -342,7 +390,7 @@
 
 	.history-date {
 		font-size: 14px;
-		color: #333;
+		color: #24323a;
 		margin-bottom: 4px;
 	}
 

@@ -1,0 +1,485 @@
+﻿<template>
+	<view class="container">
+		<view class="summary-card">
+			<view class="summary-item">
+				<text class="summary-value">¥{{monthOverview.expense.toFixed(2)}}</text>
+				<text class="summary-label">本月支出</text>
+			</view>
+			<view class="summary-item">
+				<text class="summary-value">¥{{monthOverview.income.toFixed(2)}}</text>
+				<text class="summary-label">本月收入</text>
+			</view>
+			<view class="summary-item">
+				<text class="summary-value">{{entries.length}}</text>
+				<text class="summary-label">记录总数</text>
+			</view>
+		</view>
+
+		<view class="list-card">
+			<view class="entry-item" v-for="entry in entries" :key="entry.id" @click="editEntry(entry)">
+				<view class="entry-left">
+					<view class="entry-icon" :class="entry.type">
+						<text class="entry-icon-text">{{entry.type === 'expense' ? '支' : '收'}}</text>
+					</view>
+					<view class="entry-info">
+						<text class="entry-label">{{getLabelName(entry.labelId)}}</text>
+						<text class="entry-remark">{{entry.remark || '无备注'}} · {{formatDate(entry.occurredAt)}}</text>
+					</view>
+				</view>
+				<view class="entry-right">
+					<text class="entry-amount" :class="entry.type">{{entry.type === 'expense' ? '-' : '+'}}¥{{entry.amount.toFixed(2)}}</text>
+					<button class="delete-btn" @click.stop="deleteEntry(entry.id)">删除</button>
+				</view>
+			</view>
+			<view class="empty-tip" v-if="entries.length === 0">
+				<text>还没有记账记录，点击右下角开始添加</text>
+			</view>
+		</view>
+
+		<view class="add-btn" @click="openAddModal">
+			<text class="add-icon">+</text>
+		</view>
+
+		<view class="modal" v-if="showModal" @click="hideModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">{{editingId > 0 ? '编辑记账' : '新增记账'}}</text>
+				<view class="form-item">
+					<text class="label">收支类型</text>
+					<radio-group @change="onTypeChange">
+						<label class="radio-chip" :class="{ active: formType === 'expense' }">
+							<radio value="expense" :checked="formType === 'expense'" color="#E07A5F" />
+							<text>支出</text>
+						</label>
+						<label class="radio-chip" :class="{ active: formType === 'income' }">
+							<radio value="income" :checked="formType === 'income'" color="#1F7A72" />
+							<text>收入</text>
+						</label>
+					</radio-group>
+				</view>
+
+				<view class="form-item">
+					<text class="label">金额</text>
+					<input class="input" type="digit" v-model="formAmount" placeholder="请输入金额" />
+				</view>
+
+				<view class="form-item">
+					<text class="label">标签</text>
+					<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
+						<view class="picker"><text>{{selectedLabelName}}</text></view>
+					</picker>
+				</view>
+
+				<view class="form-item">
+					<text class="label">记账日期</text>
+					<picker mode="date" :value="formDate" @change="onDateChange">
+						<view class="picker"><text>{{formDate}}</text></view>
+					</picker>
+				</view>
+
+				<view class="form-item">
+					<text class="label">备注</text>
+					<textarea class="textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资" />
+				</view>
+
+				<view class="modal-footer">
+					<button class="cancel-btn" @click="hideModal">取消</button>
+					<button class="confirm-btn" @click="saveEntry">保存</button>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { AccountManager } from '@/utils/accountManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AccountEntry, Label } from '@/utils/storage.uts'
+
+	const entries = ref<AccountEntry[]>([])
+	const labels = ref<Label[]>([])
+	const labelOptions = ref<Label[]>([{ id: 0, name: '未分类', color: '#B7A995', sortOrder: 0 }])
+	const monthOverview = ref({ income: 0, expense: 0, count: 0 })
+
+	const showModal = ref(false)
+	const editingId = ref(0)
+	const formType = ref<'expense' | 'income'>('expense')
+	const formAmount = ref('')
+	const formLabelId = ref(0)
+	const formDate = ref('')
+	const formRemark = ref('')
+
+	const selectedLabelName = computed(() => {
+		const label = labelOptions.value.find(item => item.id === formLabelId.value)
+		return label?.name || '未分类'
+	})
+
+	const formatDate = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const year = date.getFullYear()
+		const month = String(date.getMonth() + 1).padStart(2, '0')
+		const day = String(date.getDate()).padStart(2, '0')
+		return `${year}-${month}-${day}`
+	}
+
+	const loadData = () => {
+		entries.value = AccountManager.getSortedEntries()
+		labels.value = LabelManager.getSortedLabels('account')
+		labelOptions.value = [{ id: 0, name: '未分类', color: '#B7A995', sortOrder: 0 }, ...labels.value]
+		monthOverview.value = AccountManager.getOverview('month')
+	}
+
+	const resetForm = () => {
+		editingId.value = 0
+		formType.value = 'expense'
+		formAmount.value = ''
+		formLabelId.value = 0
+		formDate.value = formatDate(Date.now())
+		formRemark.value = ''
+	}
+
+	const openAddModal = () => {
+		resetForm()
+		showModal.value = true
+	}
+
+	const editEntry = (entry: AccountEntry) => {
+		editingId.value = entry.id
+		formType.value = entry.type
+		formAmount.value = String(entry.amount)
+		formLabelId.value = entry.labelId
+		formDate.value = formatDate(entry.occurredAt)
+		formRemark.value = entry.remark
+		showModal.value = true
+	}
+
+	const hideModal = () => {
+		showModal.value = false
+	}
+
+	const onTypeChange = (e: any) => {
+		formType.value = e.detail.value
+	}
+
+	const onLabelChange = (e: any) => {
+		formLabelId.value = labelOptions.value[parseInt(e.detail.value)].id
+	}
+
+	const onDateChange = (e: any) => {
+		formDate.value = e.detail.value
+	}
+
+	const saveEntry = () => {
+		const amount = parseFloat(formAmount.value)
+		if (Number.isNaN(amount) || amount <= 0) {
+			uni.showToast({ title: '请输入正确金额', icon: 'none' })
+			return
+		}
+
+		const payload = {
+			type: formType.value,
+			amount: amount,
+			labelId: formLabelId.value,
+			remark: formRemark.value,
+			occurredAt: new Date(formDate.value).getTime()
+		}
+
+		let success = false
+		if (editingId.value > 0) {
+			const current = AccountManager.getEntryById(editingId.value)
+			if (!current) return
+			success = AccountManager.updateEntry({
+				...current,
+				...payload
+			})
+		} else {
+			success = AccountManager.addEntry(payload)
+		}
+
+		if (success) {
+			hideModal()
+			loadData()
+			uni.showToast({ title: '保存成功', icon: 'success' })
+		}
+	}
+
+	const deleteEntry = (entryId: number) => {
+		uni.showModal({
+			title: '确认删除',
+			content: '确定删除这条记账记录吗？',
+			success: (res) => {
+				if (!res.confirm) return
+				if (AccountManager.deleteEntry(entryId)) {
+					loadData()
+					uni.showToast({ title: '删除成功', icon: 'success' })
+				}
+			}
+		})
+	}
+
+	const getLabelName = (labelId: number): string => {
+		if (labelId === 0) return '未分类'
+		const label = labels.value.find(item => item.id === labelId)
+		return label?.name || '未知标签'
+	}
+
+	onShow(() => {
+		if (!formDate.value) {
+			resetForm()
+		}
+		loadData()
+	})
+</script>
+
+<style>
+	.container {
+		min-height: 100vh;
+		background-color: #f4efe7;
+		padding: 16px;
+		padding-bottom: 100px;
+	}
+
+	.summary-card,
+	.list-card,
+	.modal-content {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+	}
+
+	.summary-card {
+		flex-direction: row;
+		padding: 16px;
+		margin-bottom: 14px;
+	}
+
+	.summary-item {
+		flex: 1;
+		padding: 10px;
+	}
+
+	.summary-value {
+		display: block;
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.summary-label {
+		font-size: 12px;
+		color: #7b8791;
+	}
+
+	.list-card {
+		overflow: hidden;
+	}
+
+	.entry-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 16px;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #f1e7dd;
+	}
+
+	.entry-item:last-child {
+		border-bottom-width: 0;
+	}
+
+	.entry-left,
+	.entry-right {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.entry-info {
+		margin-left: 10px;
+	}
+
+	.entry-icon {
+		width: 34px;
+		height: 34px;
+		border-radius: 17px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.entry-icon.expense {
+		background-color: #f8ddd3;
+	}
+
+	.entry-icon.income {
+		background-color: #e8f4f2;
+	}
+
+	.entry-icon-text {
+		font-size: 12px;
+		font-weight: bold;
+		color: #24323a;
+	}
+
+	.entry-label {
+		display: block;
+		font-size: 15px;
+		font-weight: 600;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.entry-remark {
+		font-size: 12px;
+		color: #7b8791;
+	}
+
+	.entry-amount {
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.entry-amount.expense {
+		color: #c45d42;
+	}
+
+	.entry-amount.income {
+		color: #1f7a72;
+	}
+
+	.delete-btn {
+		margin-left: 10px;
+		background-color: #e07a5f;
+		color: #fff;
+		height: 32px;
+		line-height: 32px;
+		padding: 0 12px;
+		border-radius: 999px;
+		font-size: 12px;
+	}
+
+	.empty-tip {
+		padding: 28px;
+		text-align: center;
+		color: #8792a1;
+	}
+
+	.add-btn {
+		position: fixed;
+		right: 18px;
+		bottom: 90px;
+		width: 58px;
+		height: 58px;
+		border-radius: 29px;
+		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
+		justify-content: center;
+		align-items: center;
+		box-shadow: 0 16px 28px rgba(31, 122, 114, 0.22);
+	}
+
+	.add-icon {
+		font-size: 32px;
+		color: #fff;
+	}
+
+	.modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.36);
+		justify-content: center;
+		align-items: center;
+		padding: 16px;
+	}
+
+	.modal-content {
+		padding: 18px;
+	}
+
+	.modal-title {
+		display: block;
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 12px;
+	}
+
+	.form-item {
+		margin-bottom: 14px;
+	}
+
+	.label {
+		display: block;
+		font-size: 14px;
+		color: #4d5b67;
+		margin-bottom: 8px;
+	}
+
+	.radio-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 10px 14px;
+		margin-right: 10px;
+		background-color: #fffdf9;
+		border-radius: 999px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.radio-chip.active {
+		background-color: #f6eee4;
+	}
+
+	.input,
+	.picker,
+	.textarea {
+		background-color: #fffdf9;
+		border-radius: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+		padding: 0 14px;
+	}
+
+	.input,
+	.picker {
+		height: 44px;
+		justify-content: center;
+	}
+
+	.textarea {
+		min-height: 90px;
+		padding-top: 10px;
+	}
+
+	.modal-footer {
+		flex-direction: row;
+		margin-top: 4px;
+	}
+
+	.cancel-btn,
+	.confirm-btn {
+		flex: 1;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
+	}
+
+	.cancel-btn {
+		background-color: #f0e7dc;
+		color: #4d5b67;
+		margin-right: 10px;
+	}
+
+	.confirm-btn {
+		background-color: #1f7a72;
+		color: #fff;
+		margin-left: 10px;
+	}
+</style>

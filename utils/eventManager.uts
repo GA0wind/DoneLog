@@ -1,11 +1,19 @@
 import { StorageUtils, Event, CompletionRecord } from './storage.uts'
 
+export type StatsPeriod = 'week' | 'month'
+
+export type EventLabelStats = {
+  labelId: number
+  count: number
+}
+
 /**
  * 事件管理工具类
  */
 export class EventManager {
   private static nextEventId: number = 1
   private static nextRecordId: number = 1
+  private static readonly oneDay = 24 * 60 * 60 * 1000
 
   /**
    * 初始化ID
@@ -30,25 +38,45 @@ export class EventManager {
    * @returns 距今天数（负数表示已过去，正数表示未来）
    */
   static calculateDaysUntilDue(event: Event, lastCompleteDate: number | null = null): number {
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    const oneDay = 24 * 60 * 60 * 1000
+    const todayStart = this.getTodayStart()
+    const dueDateStart = this.getDueDateStart(event, lastCompleteDate)
 
-    if (event.nextDueDate > 0) {
-      // 使用自定义下次完成时间，只比较日期部分
-      const dueDate = new Date(event.nextDueDate)
-      const dueDateStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime()
-      return Math.floor((dueDateStart - todayStart) / oneDay)
-    } else if (event.intervalDays > 0) {
-      // 使用间隔天数：上次完成时间（没有则用创建时间）+ 间隔天数 + 1
-      const baseTime = lastCompleteDate || event.createTime
-      const baseDate = new Date(baseTime)
-      const baseDateStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()).getTime()
-      const nextDue = baseDateStart + (event.intervalDays + 1) * oneDay
-      return Math.floor((nextDue - todayStart) / oneDay)
+    if (dueDateStart !== null) {
+      return Math.floor((dueDateStart - todayStart) / this.oneDay)
     }
 
     return 0
+  }
+
+  /**
+   * 获取事件下一次应完成日期的零点时间戳
+   */
+  static getDueDateStart(event: Event, lastCompleteDate: number | null = null): number | null {
+    if (event.nextDueDate > 0) {
+      const dueDateStart = this.getStartOfDay(event.nextDueDate)
+      if (this.isFixedDateCompleted(event, lastCompleteDate)) {
+        return null
+      }
+      return dueDateStart
+    }
+
+    if (event.intervalDays > 0) {
+      const baseTime = lastCompleteDate || event.createTime
+      return this.getStartOfDay(baseTime) + event.intervalDays * this.oneDay
+    }
+
+    return null
+  }
+
+  /**
+   * 固定日期事件在完成后视为已处理，直到用户重新编辑日期
+   */
+  static isFixedDateCompleted(event: Event, lastCompleteDate: number | null = null): boolean {
+    if (event.nextDueDate <= 0 || lastCompleteDate === null) {
+      return false
+    }
+
+    return this.getStartOfDay(lastCompleteDate) >= this.getStartOfDay(event.nextDueDate)
   }
 
   /**
@@ -65,7 +93,7 @@ export class EventManager {
     let filteredEvents = events.filter(event => {
       // 标签筛选
       if (labelId !== null) {
-        const labelIds = event.labelIdList.split(',').map(id => parseInt(id))
+        const labelIds = this.parseLabelIds(event.labelIdList)
         if (!labelIds.includes(labelId)) {
           return false
         }
@@ -211,6 +239,11 @@ export class EventManager {
    * 标记事件完成
    */
   static markEventComplete(eventId: number): boolean {
+    const event = this.getEventById(eventId)
+    if (!event || event.isTerminated) {
+      return false
+    }
+
     // 检查今天是否已完成
     if (this.isEventCompletedToday(eventId)) {
       return false
@@ -243,5 +276,76 @@ export class EventManager {
   static getEventById(eventId: number): Event | null {
     const events = StorageUtils.getEvents()
     return events.find(e => e.id === eventId) || null
+  }
+
+  static getCompletionStatsByLabel(period: StatsPeriod): EventLabelStats[] {
+    const events = StorageUtils.getEvents()
+    const records = StorageUtils.getCompletionRecords()
+    const range = this.getPeriodRange(period)
+    const statsMap = new Map<number, EventLabelStats>()
+
+    records.forEach(record => {
+      if (record.lastCompleteDate < range.start || record.lastCompleteDate > range.end) {
+        return
+      }
+
+      const event = events.find(item => item.id === record.eventId)
+      if (!event) {
+        return
+      }
+
+      const labelIds = this.parseLabelIds(event.labelIdList)
+      if (labelIds.length === 0) {
+        const uncategorized = statsMap.get(0) || { labelId: 0, count: 0 }
+        uncategorized.count += 1
+        statsMap.set(0, uncategorized)
+        return
+      }
+
+      labelIds.forEach(labelId => {
+        const current = statsMap.get(labelId) || { labelId, count: 0 }
+        current.count += 1
+        statsMap.set(labelId, current)
+      })
+    })
+
+    return Array.from(statsMap.values()).sort((a, b) => b.count - a.count)
+  }
+
+  private static getTodayStart(): number {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  }
+
+  private static getStartOfDay(timestamp: number): number {
+    const date = new Date(timestamp)
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  }
+
+  private static parseLabelIds(labelIdList: string): number[] {
+    if (!labelIdList) {
+      return []
+    }
+
+    return labelIdList
+      .split(',')
+      .map(id => parseInt(id))
+      .filter(id => !Number.isNaN(id))
+  }
+
+  private static getPeriodRange(period: StatsPeriod): { start: number, end: number } {
+    const now = new Date()
+    const current = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const end = current + this.oneDay - 1
+
+    if (period === 'week') {
+      const dayOfWeek = now.getDay()
+      const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      const start = current - offset * this.oneDay
+      return { start, end }
+    }
+
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return { start, end }
   }
 }

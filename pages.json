@@ -1,4 +1,4 @@
-{
+﻿{
 	"pages": [
 		{
 			"path": "pages/index/index",
@@ -25,6 +25,30 @@
 			}
 		},
 		{
+			"path": "pages/event/complete",
+			"style": {
+				"navigationBarTitleText": "完成事件"
+			}
+		},
+		{
+			"path": "pages/account/index",
+			"style": {
+				"navigationBarTitleText": "记账"
+			}
+		},
+		{
+			"path": "pages/my/index",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		},
+		{
+			"path": "pages/my/labels",
+			"style": {
+				"navigationBarTitleText": "标签管理"
+			}
+		},
+		{
 			"path": "pages/label/index",
 			"style": {
 				"navigationBarTitleText": "标签管理"
@@ -40,14 +64,17 @@
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "DoneLog",
-		"navigationBarBackgroundColor": "#F8F8F8",
-		"backgroundColor": "#F8F8F8"
+		"navigationBarBackgroundColor": "#F7F2EA",
+		"backgroundColor": "#F4EFE7"
 	},
 	"tabBar": {
-		"color": "#7A7E83",
-		"selectedColor": "#3cc51f",
+		"color": "#8792A1",
+		"selectedColor": "#1F7A72",
 		"borderStyle": "black",
-		"backgroundColor": "#ffffff",
+		"backgroundColor": "#FFF9F2",
+		"height": "60px",
+		"fontSize": "13px",
+		"iconWidth": "28px",
 		"list": [
 			{
 				"pagePath": "pages/index/index",
@@ -56,16 +83,22 @@
 				"text": "事件"
 			},
 			{
-				"pagePath": "pages/label/index",
-				"iconPath": "static/tab-label.png",
-				"selectedIconPath": "static/tab-label-active.png",
-				"text": "标签"
-			},
-			{
 				"pagePath": "pages/calendar/index",
 				"iconPath": "static/tab-calendar.png",
 				"selectedIconPath": "static/tab-calendar-active.png",
 				"text": "日历"
+			},
+			{
+				"pagePath": "pages/account/index",
+				"iconPath": "static/tab-account.png",
+				"selectedIconPath": "static/tab-account-active.png",
+				"text": "记账"
+			},
+			{
+				"pagePath": "pages/my/index",
+				"iconPath": "static/tab-my.png",
+				"selectedIconPath": "static/tab-my-active.png",
+				"text": "我的"
 			}
 		]
 	}

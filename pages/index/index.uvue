@@ -38,7 +38,7 @@
 				<view class="event-tags">
 					<text 
 						class="tag" 
-						v-for="labelId in event.labelIdList.split(',')" 
+						v-for="labelId in getEventLabelIds(event)" 
 						:key="labelId"
 						:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
 					>
@@ -53,7 +53,9 @@
 				</view>
 			</view>
 			<view class="empty-tip" v-if="filteredEvents.length === 0">
-				<text>暂无事件</text>
+				<text class="empty-icon">◌</text>
+				<text class="empty-title">暂时没有待办事件</text>
+				<text class="empty-desc">试试新增一个周期事项，或者切换筛选条件看看。</text>
 			</view>
 		</scroll-view>
 
@@ -99,32 +101,54 @@
 
 	// 加载数据
 	const loadData = () => {
-		let showTerminated = false
-		if (selectedStatus.value?.id === 2) {
-			// 只显示已终止
-			showTerminated = true
-		} else if (selectedStatus.value?.id === 1) {
-			// 只显示进行中
-			showTerminated = false
-		} else {
-			// 全部状态：显示进行中和已终止
-			showTerminated = true
-		}
-
-		events.value = EventManager.getSortedEvents(showTerminated, selectedLabel.value?.id || null)
+		events.value = EventManager.getSortedEvents(true, selectedLabel.value?.id || null)
 		labels.value = LabelManager.getSortedLabels()
 		getLabelOptions()
 	}
 
 	// 筛选事件
 	const filteredEvents = computed(() => {
-		if (!searchKeyword.value) {
-			return events.value
-		}
-		return events.value.filter(event => 
-			event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
-		)
+		return events.value.filter(event => {
+			if (!matchesStatus(event)) {
+				return false
+			}
+
+			if (EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))) {
+				return false
+			}
+
+			if (!searchKeyword.value) {
+				return true
+			}
+
+			return event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+		})
 	})
+
+	const getEventLabelIds = (event: Event): number[] => {
+		if (!event.labelIdList) return []
+		return event.labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id))
+	}
+
+	const getLastCompleteDate = (event: Event): number | null => {
+		const lastRecord = EventManager.getEventHistory(event.id)[0]
+		return lastRecord?.lastCompleteDate || null
+	}
+
+	const matchesStatus = (event: Event): boolean => {
+		if (!selectedStatus.value || selectedStatus.value.id === 0) {
+			return true
+		}
+
+		if (selectedStatus.value.id === 1) {
+			return !event.isTerminated
+		}
+
+		return event.isTerminated
+	}
 
 	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
@@ -146,15 +170,21 @@
 
 	// 判断是否过期
 	const isOverdue = (event: Event): boolean => {
-		const lastRecord = EventManager.getEventHistory(event.id)[0]
-		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+		if (EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))) {
+			return false
+		}
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, getLastCompleteDate(event))
 		return daysUntilDue < 0
 	}
 
 	// 获取天数文本
 	const getDaysText = (event: Event): string => {
-		const lastRecord = EventManager.getEventHistory(event.id)[0]
-		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+		const lastCompleteDate = getLastCompleteDate(event)
+		if (EventManager.isFixedDateCompleted(event, lastCompleteDate)) {
+			return '已完成'
+		}
+
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastCompleteDate)
 
 		if (daysUntilDue === 0) {
 			return '今天'
@@ -167,6 +197,14 @@
 
 	// 标记完成
 	const markComplete = (eventId: number) => {
+		const targetEvent = events.value.find(item => item.id === eventId) || EventManager.getEventById(eventId)
+		if (targetEvent?.nextDueDate && targetEvent.nextDueDate > 0) {
+			uni.navigateTo({
+				url: `/pages/event/complete?id=${eventId}`
+			})
+			return
+		}
+
 		const success = EventManager.markEventComplete(eventId)
 		if (success) {
 			loadData()
@@ -229,191 +267,199 @@
 		uni.stopPullDownRefresh()
 	})
 
-	// 添加按钮拖动
-	const addBtnX = ref(0)
-	const addBtnY = ref(0)
-	const isDragging = ref(false)
-	const startX = ref(0)
-	const startY = ref(0)
-	const btnStartX = ref(0)
-	const btnStartY = ref(0)
-
-	// 初始化按钮位置
-	const initBtnPosition = () => {
-		const systemInfo = uni.getSystemInfoSync()
-		addBtnX.value = systemInfo.windowWidth - 76
-		addBtnY.value = systemInfo.windowHeight - 200
-	}
-
-	// 触摸开始
-	const onTouchStart = (e: any) => {
-		isDragging.value = false
-		startX.value = e.touches[0].clientX
-		startY.value = e.touches[0].clientY
-		btnStartX.value = addBtnX.value
-		btnStartY.value = addBtnY.value
-	}
-
-	// 触摸移动
-	const onTouchMove = (e: any) => {
-		const deltaX = e.touches[0].clientX - startX.value
-		const deltaY = e.touches[0].clientY - startY.value
-
-		// 如果移动距离超过10px，则认为是拖动
-		if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
-			isDragging.value = true
-		}
-
-		if (isDragging.value) {
-			const systemInfo = uni.getSystemInfoSync()
-			const maxX = systemInfo.windowWidth - 56
-			const maxY = systemInfo.windowHeight - 100
-
-			addBtnX.value = Math.max(0, Math.min(maxX, btnStartX.value + deltaX))
-			addBtnY.value = Math.max(0, Math.min(maxY, btnStartY.value + deltaY))
-		}
-	}
-
-	// 触摸结束
-	const onTouchEnd = () => {
-		isDragging.value = false
-	}
-
 	// 页面显示时加载数据
 	onShow(() => {
 		loadData()
-		initBtnPosition()
 	})
 </script>
 
 <style>
 	.container {
 		flex: 1;
-		background-color: #f5f5f5;
+		background-color: #f4efe7;
 		padding-bottom: 100px;
 	}
 
 	/* 搜索和筛选 */
 	.filter-bar {
-		background-color: #fff;
-		padding: 10px 15px;
+		background-color: #fff9f2;
+		margin: 14px 14px 10px;
+		padding: 10px;
 		flex-direction: row;
 		align-items: center;
-		margin-bottom: 10px;
+		border-radius: 22px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 8px 24px rgba(36, 50, 58, 0.06);
 	}
 
 	.search-input {
 		flex: 1;
-		height: 36px;
-		background-color: #f5f5f5;
-		border-radius: 18px;
+		height: 38px;
+		background-color: #fffdf9;
+		border-radius: 20px;
 		padding: 0 15px;
-		font-size: 14px;
+		font-size: 13px;
 		margin-right: 10px;
+		color: #24323a;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
 	}
 
 	.filter-btn {
 		flex-direction: row;
 		align-items: center;
-		padding: 5px 12px;
-		background-color: #f5f5f5;
-		border-radius: 15px;
-		font-size: 14px;
+		padding: 7px 10px;
+		background-color: #f2ebe2;
+		border-radius: 16px;
+		font-size: 12px;
+		color: #4d5b67;
+		margin-left: 6px;
 	}
 
 	.arrow {
 		margin-left: 5px;
-		font-size: 12px;
+		font-size: 10px;
+		color: #8792a1;
 	}
 
 	/* 事件列表 */
 	.event-list {
 		height: calc(100vh - 200px);
-		padding: 0 15px;
+		padding: 4px 14px 0;
+	}
+
+	.event-list::before {
+		content: '';
+		display: block;
+		height: 8px;
 	}
 
 	.event-card {
-		background-color: #fff;
-		border-radius: 10px;
-		padding: 12px 15px;
-		margin-bottom: 8px;
+		background-color: #fffdf9;
+		border-radius: 22px;
+		padding: 16px;
+		margin-bottom: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #ecdfd2;
+		box-shadow: 0 10px 24px rgba(31, 122, 114, 0.08);
 	}
 
 	.event-card.overdue {
-		border-left: 3px solid #ff4d4f;
+		border-left: 5px solid #e07a5f;
 	}
 
 	.event-card.terminated {
-		opacity: 0.5;
+		opacity: 0.68;
+		background-color: #f8f1e9;
 	}
 
 	.event-header {
 		flex-direction: row;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 6px;
+		margin-bottom: 10px;
 	}
 
 	.event-name {
-		font-size: 20px;
-		color: #333;
+		font-size: 19px;
+		color: #24323a;
 		font-weight: bold;
 		flex: 1;
 	}
 
 	.event-days {
-		font-size: 14px;
-		color: #999;
+		font-size: 12px;
+		color: #5a6875;
+		background-color: #f1ece4;
+		padding: 6px 10px;
+		border-radius: 999px;
+		margin-left: 10px;
 	}
 
 	.event-days.overdue-text {
-		color: #ff4d4f;
+		color: #c45d42;
+		background-color: #f8ddd3;
 	}
 
 	.event-tags {
 		flex-direction: row;
 		flex-wrap: wrap;
-		margin-bottom: 6px;
+		margin-bottom: 8px;
 	}
 
 	.tag {
 		font-size: 12px;
 		color: #fff;
-		padding: 2px 8px;
-		border-radius: 10px;
-		margin-right: 5px;
+		padding: 4px 10px;
+		border-radius: 999px;
+		margin-right: 6px;
 		margin-bottom: 5px;
 	}
 
 	.event-remark {
-		margin-bottom: 6px;
+		margin-bottom: 10px;
 	}
 
 	.remark-text {
 		font-size: 13px;
-		color: #999;
+		color: #72808d;
 		line-height: 1.5;
 	}
 
 	.event-actions {
 		flex-direction: row;
 		justify-content: flex-end;
+		align-items: center;
 	}
 
 	.action-btn {
 		margin-left: 10px;
-		font-size: 14px;
-		padding: 5px 12px;
-		background-color: #4CAF50;
+		font-size: 13px;
+		padding: 0 16px;
+		height: 34px;
+		line-height: 34px;
+		background-color: #1f7a72;
 		color: #fff;
-		border-radius: 15px;
+		border-radius: 999px;
+		box-shadow: 0 8px 18px rgba(31, 122, 114, 0.18);
 	}
 
 	/* 空状态 */
 	.empty-tip {
 		text-align: center;
-		padding: 50px 0;
-		color: #999;
+		padding: 72px 22px;
+		color: #8792a1;
+		background: linear-gradient(180deg, #fffaf3, #f8f0e5);
+		border-radius: 28px;
+		border-width: 1px;
+		border-style: dashed;
+		border-color: #e6d8ca;
+		box-shadow: 0 14px 26px rgba(36, 50, 58, 0.04);
+		align-items: center;
+	}
+
+	.empty-icon {
+		font-size: 26px;
+		color: #c5b8aa;
+		margin-bottom: 10px;
+	}
+
+	.empty-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #4d5b67;
+		margin-bottom: 8px;
+	}
+
+	.empty-desc {
+		font-size: 13px;
+		line-height: 1.6;
+		color: #8792a1;
+		padding: 0 16px;
 	}
 
 	/* 添加按钮 */
@@ -421,19 +467,34 @@
 		position: fixed;
 		width: 56px;
 		height: 56px;
-		background-color: #007AFF;
+		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
 		border-radius: 28px;
 		justify-content: center;
 		align-items: center;
-		box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+		box-shadow: 0 16px 30px rgba(31, 122, 114, 0.28);
 		z-index: 1000;
 		bottom: 70px;
-		right: 20px;
+		right: 18px;
+		border-width: 3px;
+		border-style: solid;
+		border-color: rgba(255, 250, 243, 0.9);
 	}
 
 	.add-icon {
 		font-size: 32px;
 		color: #fff;
 		font-weight: 300;
+	}
+
+	.terminated-badge {
+		align-self: flex-start;
+		background-color: #efe4d8;
+		padding: 4px 10px;
+		border-radius: 999px;
+	}
+
+	.terminated-text {
+		font-size: 12px;
+		color: #7b6655;
 	}
 </style>

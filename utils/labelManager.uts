@@ -1,76 +1,125 @@
 import { StorageUtils, Label } from './storage.uts'
 
+export type LabelKind = 'event' | 'account'
+
 /**
  * 标签管理工具类
  */
 export class LabelManager {
-  private static nextLabelId: number = 1
+  private static nextEventLabelId: number = 1
+  private static nextAccountLabelId: number = 1
 
   /**
    * 初始化ID
    */
   static initIds(): void {
-    const labels = StorageUtils.getLabels()
-    if (labels.length > 0) {
-      this.nextLabelId = Math.max(...labels.map(l => l.id)) + 1
+    const eventLabels = StorageUtils.getEventLabels()
+    if (eventLabels.length > 0) {
+      this.nextEventLabelId = Math.max(...eventLabels.map(l => l.id)) + 1
+    }
+
+    const accountLabels = StorageUtils.getAccountLabels()
+    if (accountLabels.length > 0) {
+      this.nextAccountLabelId = Math.max(...accountLabels.map(l => l.id)) + 1
     }
   }
 
   /**
    * 获取排序后的标签列表
    */
-  static getSortedLabels(): Label[] {
-    const labels = StorageUtils.getLabels()
+  static getSortedLabels(kind: LabelKind = 'event'): Label[] {
+    const labels = this.getLabelsByKind(kind)
     return labels.sort((a, b) => a.sortOrder - b.sortOrder)
   }
 
   /**
    * 添加标签
    */
-  static addLabel(name: string, color: string = '#007AFF'): boolean {
-    const labels = StorageUtils.getLabels()
+  static addLabel(name: string, color: string = '#007AFF', kind: LabelKind = 'event'): boolean {
+    const labels = this.getLabelsByKind(kind)
+    const normalized = name.trim()
+    if (!normalized) return false
+
+    const duplicate = labels.some(label => label.name === normalized)
+    if (duplicate) return false
+
     const maxSortOrder = labels.length > 0 ? Math.max(...labels.map(l => l.sortOrder)) : 0
 
     const newLabel: Label = {
-      id: this.nextLabelId++,
-      name: name,
+      id: kind === 'event' ? this.nextEventLabelId++ : this.nextAccountLabelId++,
+      name: normalized,
       color: color,
       sortOrder: maxSortOrder + 1
     }
 
     labels.push(newLabel)
-    return StorageUtils.saveLabels(labels)
+    return this.saveLabelsByKind(kind, labels)
   }
 
   /**
    * 更新标签
    */
-  static updateLabel(label: Label): boolean {
-    const labels = StorageUtils.getLabels()
+  static updateLabel(label: Label, kind: LabelKind = 'event'): boolean {
+    const labels = this.getLabelsByKind(kind)
     const index = labels.findIndex(l => l.id === label.id)
     if (index === -1) return false
 
-    labels[index] = label
-    return StorageUtils.saveLabels(labels)
+    const normalized = label.name.trim()
+    if (!normalized) return false
+
+    const duplicate = labels.some(l => l.id !== label.id && l.name === normalized)
+    if (duplicate) return false
+
+    labels[index] = {
+      ...labels[index],
+      name: normalized,
+      color: label.color
+    }
+    return this.saveLabelsByKind(kind, labels)
   }
 
   /**
    * 删除标签
    */
-  static deleteLabel(labelId: number): boolean {
-    const labels = StorageUtils.getLabels()
+  static deleteLabel(labelId: number, kind: LabelKind = 'event'): boolean {
+    const labels = this.getLabelsByKind(kind)
     const index = labels.findIndex(l => l.id === labelId)
     if (index === -1) return false
 
     labels.splice(index, 1)
-    return StorageUtils.saveLabels(labels)
+    const saveLabelSuccess = this.saveLabelsByKind(kind, labels)
+    if (!saveLabelSuccess) return false
+
+    if (kind === 'event') {
+      const events = StorageUtils.getEvents()
+      const updatedEvents = events.map(event => {
+        const labelIds = event.labelIdList
+          .split(',')
+          .map(id => parseInt(id))
+          .filter(id => !Number.isNaN(id) && id !== labelId)
+
+        return {
+          ...event,
+          labelIdList: labelIds.join(',')
+        }
+      })
+
+      return StorageUtils.saveEvents(updatedEvents)
+    }
+
+    const entries = StorageUtils.getAccountEntries()
+    const updatedEntries = entries.map(entry => ({
+      ...entry,
+      labelId: entry.labelId === labelId ? 0 : entry.labelId
+    }))
+    return StorageUtils.saveAccountEntries(updatedEntries)
   }
 
   /**
    * 更新标签排序
    */
-  static updateLabelOrder(labelId: number, newOrder: number): boolean {
-    const labels = StorageUtils.getLabels()
+  static updateLabelOrder(labelId: number, newOrder: number, kind: LabelKind = 'event'): boolean {
+    const labels = this.getLabelsByKind(kind)
     const label = labels.find(l => l.id === labelId)
     if (!label) return false
 
@@ -93,22 +142,30 @@ export class LabelManager {
     })
 
     label.sortOrder = newOrder
-    return StorageUtils.saveLabels(labels)
+    return this.saveLabelsByKind(kind, labels)
   }
 
   /**
    * 获取单个标签
    */
-  static getLabelById(labelId: number): Label | null {
-    const labels = StorageUtils.getLabels()
+  static getLabelById(labelId: number, kind: LabelKind = 'event'): Label | null {
+    const labels = this.getLabelsByKind(kind)
     return labels.find(l => l.id === labelId) || null
   }
 
   /**
    * 根据ID列表获取标签
    */
-  static getLabelsByIds(labelIds: number[]): Label[] {
-    const labels = StorageUtils.getLabels()
+  static getLabelsByIds(labelIds: number[], kind: LabelKind = 'event'): Label[] {
+    const labels = this.getLabelsByKind(kind)
     return labels.filter(l => labelIds.includes(l.id))
+  }
+
+  private static getLabelsByKind(kind: LabelKind): Label[] {
+    return kind === 'event' ? StorageUtils.getEventLabels() : StorageUtils.getAccountLabels()
+  }
+
+  private static saveLabelsByKind(kind: LabelKind, labels: Label[]): boolean {
+    return kind === 'event' ? StorageUtils.saveEventLabels(labels) : StorageUtils.saveAccountLabels(labels)
   }
 }

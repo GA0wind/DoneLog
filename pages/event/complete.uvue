@@ -1,0 +1,390 @@
+<template>
+	<view class="container">
+		<view class="hero-card">
+			<text class="hero-kicker">完成确认</text>
+			<text class="hero-title">{{event?.name}}</text>
+			<text class="hero-desc">这个事项使用的是指定日期模式。完成后，你可以选择终止，也可以继续安排下一次。</text>
+		</view>
+
+		<view class="panel">
+			<text class="section-title">完成后怎么处理？</text>
+			<radio-group @change="onContinueChange">
+				<label class="option-card" :class="{ active: !shouldContinue }">
+					<view class="option-main">
+						<radio :checked="!shouldContinue" value="stop" color="#1F7A72" />
+						<view class="option-texts">
+							<text class="option-title">不继续</text>
+							<text class="option-desc">完成后将这个事件标记为已终止。</text>
+						</view>
+					</view>
+				</label>
+				<label class="option-card" :class="{ active: shouldContinue }">
+					<view class="option-main">
+						<radio :checked="shouldContinue" value="continue" color="#1F7A72" />
+						<view class="option-texts">
+							<text class="option-title">继续安排下一次</text>
+							<text class="option-desc">可以继续使用指定日期，也可以改成间隔天数。</text>
+						</view>
+					</view>
+				</label>
+			</radio-group>
+
+			<view class="schedule-panel" v-if="shouldContinue">
+				<text class="section-title">下一次如何安排？</text>
+				<radio-group @change="onRepeatTypeChange">
+					<label class="mini-option" :class="{ active: repeatType === 'date' }">
+						<radio value="date" :checked="repeatType === 'date'" color="#1F7A72" />
+						<text>指定日期</text>
+					</label>
+					<label class="mini-option" :class="{ active: repeatType === 'interval' }">
+						<radio value="interval" :checked="repeatType === 'interval'" color="#1F7A72" />
+						<text>间隔天数</text>
+					</label>
+				</radio-group>
+
+				<view class="form-item" v-if="repeatType === 'date'">
+					<text class="label">下次完成日期</text>
+					<picker mode="date" :value="nextDueDate" @change="onDateChange">
+						<view class="picker">
+							<text>{{nextDueDate || '请选择日期'}}</text>
+						</view>
+					</picker>
+				</view>
+
+				<view class="form-item" v-if="repeatType === 'interval'">
+					<text class="label">间隔天数</text>
+					<input class="input" type="number" v-model="intervalDays" placeholder="例如 7" />
+				</view>
+			</view>
+		</view>
+
+		<view class="footer-actions">
+			<button class="ghost-btn" @click="goBack">返回</button>
+			<button class="confirm-btn" @click="submitCompletion">确认完成</button>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { EventManager } from '@/utils/eventManager.uts'
+	import { Event } from '@/utils/storage.uts'
+
+	const eventId = ref(0)
+	const event = ref<Event | null>(null)
+	const shouldContinue = ref(false)
+	const repeatType = ref<'date' | 'interval'>('date')
+	const nextDueDate = ref('')
+	const intervalDays = ref('')
+
+	const formatDate = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const year = date.getFullYear()
+		const month = String(date.getMonth() + 1).padStart(2, '0')
+		const day = String(date.getDate()).padStart(2, '0')
+		return `${year}-${month}-${day}`
+	}
+
+	const loadEvent = () => {
+		const current = EventManager.getEventById(eventId.value)
+		if (!current) {
+			uni.showToast({
+				title: '事件不存在',
+				icon: 'none'
+			})
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 1200)
+			return
+		}
+
+		event.value = current
+		if (current.nextDueDate > 0) {
+			repeatType.value = 'date'
+			nextDueDate.value = formatDate(current.nextDueDate)
+		} else if (current.intervalDays > 0) {
+			repeatType.value = 'interval'
+			intervalDays.value = String(current.intervalDays)
+		}
+	}
+
+	const onContinueChange = (e: any) => {
+		shouldContinue.value = e.detail.value === 'continue'
+	}
+
+	const onRepeatTypeChange = (e: any) => {
+		repeatType.value = e.detail.value
+	}
+
+	const onDateChange = (e: any) => {
+		nextDueDate.value = e.detail.value
+	}
+
+	const goBack = () => {
+		uni.navigateBack()
+	}
+
+	const submitCompletion = () => {
+		if (!event.value) return
+
+		if (shouldContinue.value) {
+			if (repeatType.value === 'date' && !nextDueDate.value) {
+				uni.showToast({
+					title: '请选择下次完成日期',
+					icon: 'none'
+				})
+				return
+			}
+
+			if (repeatType.value === 'interval') {
+				const interval = parseInt(intervalDays.value)
+				if (Number.isNaN(interval) || interval <= 0) {
+					uni.showToast({
+						title: '间隔天数必须大于 0',
+						icon: 'none'
+					})
+					return
+				}
+			}
+		}
+
+		const completeSuccess = EventManager.markEventComplete(eventId.value)
+		if (!completeSuccess) {
+			uni.showToast({
+				title: '今天已完成过或事件不可操作',
+				icon: 'none'
+			})
+			return
+		}
+
+		if (!shouldContinue.value) {
+			const terminateSuccess = EventManager.terminateEvent(eventId.value)
+			if (terminateSuccess) {
+				uni.showToast({
+					title: '已完成并终止',
+					icon: 'success'
+				})
+				setTimeout(() => {
+					uni.navigateBack()
+				}, 1200)
+				return
+			}
+		} else {
+			const updatedEvent: Event = {
+				...event.value,
+				intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
+				nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
+				isTerminated: false
+			}
+
+			const updateSuccess = EventManager.updateEvent(updatedEvent)
+			if (updateSuccess) {
+				uni.showToast({
+					title: '已完成并安排下一次',
+					icon: 'success'
+				})
+				setTimeout(() => {
+					uni.navigateBack()
+				}, 1200)
+				return
+			}
+		}
+
+		uni.showToast({
+			title: '后续处理失败，请重试',
+			icon: 'none'
+		})
+	}
+
+	onLoad((options: any) => {
+		if (!options.id) {
+			uni.showToast({
+				title: '参数错误',
+				icon: 'none'
+			})
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 1200)
+			return
+		}
+
+		eventId.value = parseInt(options.id)
+		loadEvent()
+	})
+</script>
+
+<style>
+	.container {
+		min-height: 100vh;
+		padding: 16px;
+		background-color: #f4efe7;
+	}
+
+	.hero-card {
+		background: linear-gradient(160deg, #fff9f2, #f6efe5);
+		border-radius: 24px;
+		padding: 20px;
+		margin-bottom: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 14px 30px rgba(36, 50, 58, 0.06);
+	}
+
+	.hero-kicker {
+		font-size: 12px;
+		color: #1f7a72;
+		margin-bottom: 8px;
+	}
+
+	.hero-title {
+		font-size: 24px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 10px;
+	}
+
+	.hero-desc {
+		font-size: 14px;
+		line-height: 1.6;
+		color: #6f7d89;
+	}
+
+	.panel {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+	}
+
+	.section-title {
+		display: block;
+		font-size: 15px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 12px;
+	}
+
+	.option-card {
+		display: block;
+		background-color: #fffdf9;
+		border-radius: 18px;
+		padding: 14px;
+		margin-bottom: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #ece0d5;
+	}
+
+	.option-card.active {
+		border-color: #1f7a72;
+		background-color: #eef8f6;
+	}
+
+	.option-main {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.option-texts {
+		flex: 1;
+		margin-left: 10px;
+	}
+
+	.option-title {
+		display: block;
+		font-size: 15px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.option-desc {
+		font-size: 13px;
+		line-height: 1.5;
+		color: #71808c;
+	}
+
+	.schedule-panel {
+		margin-top: 10px;
+		padding-top: 12px;
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #efe3d7;
+	}
+
+	.mini-option {
+		display: block;
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 12px 14px;
+		margin-bottom: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #ece0d5;
+	}
+
+	.mini-option.active {
+		border-color: #1f7a72;
+		background-color: #eef8f6;
+	}
+
+	.mini-option radio,
+	.mini-option text {
+		vertical-align: middle;
+	}
+
+	.form-item {
+		margin-top: 10px;
+	}
+
+	.label {
+		display: block;
+		font-size: 14px;
+		color: #4d5b67;
+		margin-bottom: 8px;
+	}
+
+	.input,
+	.picker {
+		height: 46px;
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 0 15px;
+		font-size: 14px;
+		color: #24323a;
+		justify-content: center;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.footer-actions {
+		flex-direction: row;
+		margin-top: 16px;
+	}
+
+	.ghost-btn,
+	.confirm-btn {
+		flex: 1;
+		height: 48px;
+		line-height: 48px;
+		border-radius: 24px;
+		font-size: 16px;
+	}
+
+	.ghost-btn {
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		margin-right: 10px;
+	}
+
+	.confirm-btn {
+		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
+		color: #fff;
+		margin-left: 10px;
+		box-shadow: 0 14px 24px rgba(31, 122, 114, 0.18);
+	}
+</style>

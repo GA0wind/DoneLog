@@ -1,0 +1,124 @@
+import { StorageUtils, AccountEntry } from './storage.uts'
+
+export type StatsPeriod = 'week' | 'month'
+
+export type AccountLabelStats = {
+  labelId: number
+  count: number
+  totalAmount: number
+}
+
+/**
+ * 记账管理工具类
+ */
+export class AccountManager {
+  private static nextEntryId: number = 1
+
+  static initIds(): void {
+    const entries = StorageUtils.getAccountEntries()
+    if (entries.length > 0) {
+      this.nextEntryId = Math.max(...entries.map(entry => entry.id)) + 1
+    }
+  }
+
+  static getSortedEntries(): AccountEntry[] {
+    return StorageUtils.getAccountEntries().sort((a, b) => b.occurredAt - a.occurredAt)
+  }
+
+  static addEntry(entry: Omit<AccountEntry, 'id' | 'createTime' | 'updateTime'>): boolean {
+    const entries = StorageUtils.getAccountEntries()
+    const newEntry: AccountEntry = {
+      ...entry,
+      id: this.nextEntryId++,
+      createTime: Date.now(),
+      updateTime: Date.now()
+    }
+    entries.push(newEntry)
+    return StorageUtils.saveAccountEntries(entries)
+  }
+
+  static updateEntry(entry: AccountEntry): boolean {
+    const entries = StorageUtils.getAccountEntries()
+    const index = entries.findIndex(item => item.id === entry.id)
+    if (index === -1) return false
+
+    entries[index] = {
+      ...entry,
+      updateTime: Date.now()
+    }
+    return StorageUtils.saveAccountEntries(entries)
+  }
+
+  static deleteEntry(entryId: number): boolean {
+    const entries = StorageUtils.getAccountEntries().filter(entry => entry.id !== entryId)
+    return StorageUtils.saveAccountEntries(entries)
+  }
+
+  static getEntryById(entryId: number): AccountEntry | null {
+    return StorageUtils.getAccountEntries().find(entry => entry.id === entryId) || null
+  }
+
+  static getStatsByLabel(period: StatsPeriod): AccountLabelStats[] {
+    const entries = StorageUtils.getAccountEntries()
+    const range = this.getPeriodRange(period)
+    const statsMap = new Map<number, AccountLabelStats>()
+
+    entries.forEach(entry => {
+      if (entry.occurredAt < range.start || entry.occurredAt > range.end) {
+        return
+      }
+
+      const key = entry.labelId
+      const current = statsMap.get(key) || {
+        labelId: key,
+        count: 0,
+        totalAmount: 0
+      }
+
+      current.count += 1
+      current.totalAmount += entry.amount
+      statsMap.set(key, current)
+    })
+
+    return Array.from(statsMap.values()).sort((a, b) => b.totalAmount - a.totalAmount)
+  }
+
+  static getOverview(period: StatsPeriod): { income: number, expense: number, count: number } {
+    const entries = StorageUtils.getAccountEntries()
+    const range = this.getPeriodRange(period)
+    let income = 0
+    let expense = 0
+    let count = 0
+
+    entries.forEach(entry => {
+      if (entry.occurredAt < range.start || entry.occurredAt > range.end) {
+        return
+      }
+
+      count += 1
+      if (entry.type === 'income') {
+        income += entry.amount
+      } else {
+        expense += entry.amount
+      }
+    })
+
+    return { income, expense, count }
+  }
+
+  private static getPeriodRange(period: StatsPeriod): { start: number, end: number } {
+    const now = new Date()
+    const current = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const end = current + 24 * 60 * 60 * 1000 - 1
+
+    if (period === 'week') {
+      const dayOfWeek = now.getDay()
+      const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      const start = current - offset * 24 * 60 * 60 * 1000
+      return { start, end }
+    }
+
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return { start, end }
+  }
+}

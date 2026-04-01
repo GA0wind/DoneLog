@@ -1,42 +1,55 @@
 <template>
 	<view class="container">
-		<!-- 日历头部 -->
-		<view class="calendar-header">
-			<view class="year-month-nav">
-				<button class="nav-btn" @click="prevYear">◀◀</button>
-				<button class="nav-btn" @click="prevMonth">◀</button>
-				<text class="current-date">{{currentYear}}年{{currentMonth}}月</text>
-				<button class="nav-btn" @click="nextMonth">▶</button>
-				<button class="nav-btn" @click="nextYear">▶▶</button>
-			</view>
-		</view>
-
-		<!-- 星期标题 -->
-		<view class="weekdays">
-			<text class="weekday" v-for="day in weekdays" :key="day">{{day}}</text>
-		</view>
-
-		<!-- 日历网格 -->
-		<swiper class="calendar-swiper" :current="swiperIndex" @change="onSwiperChange">
-			<swiper-item v-for="(month, index) in calendarMonths" :key="index">
-				<view class="calendar-grid">
-					<view 
-						class="calendar-day"
-						v-for="(day, dayIndex) in month.days"
-						:key="dayIndex"
-						:class="{ 
-							'selected': isSelected(day),
-							'today': isToday(day),
-							'other-month': !day.isCurrentMonth
-						}"
-						@click="selectDate(day)"
-					>
-						<text class="day-number">{{day.day}}</text>
-						<view class="event-dot" v-if="hasEvent(day)"></view>
+		<view class="calendar-shell">
+			<!-- 日历头部 -->
+			<view class="calendar-header">
+				<view class="year-month-nav">
+					<button class="nav-btn" @click="prevMonth">‹</button>
+					<view class="picker-group">
+						<picker class="header-picker" mode="selector" :range="yearOptions" @change="onYearChange">
+							<view class="header-picker-inner">
+								<text class="current-date">{{currentYear}}年</text>
+								<text class="picker-arrow">▼</text>
+							</view>
+						</picker>
+						<picker class="header-picker month-picker" mode="selector" :range="monthOptions" @change="onMonthChange">
+							<view class="header-picker-inner">
+								<text class="current-date">{{currentMonth}}月</text>
+								<text class="picker-arrow">▼</text>
+							</view>
+						</picker>
 					</view>
+					<button class="nav-btn" @click="nextMonth">›</button>
 				</view>
-			</swiper-item>
-		</swiper>
+			</view>
+
+			<!-- 星期标题 -->
+			<view class="weekdays">
+				<text class="weekday" v-for="day in weekdays" :key="day">{{day}}</text>
+			</view>
+
+			<!-- 日历网格 -->
+			<swiper class="calendar-swiper" :current="swiperIndex" @change="onSwiperChange">
+				<swiper-item v-for="(month, index) in calendarMonths" :key="index">
+					<view class="calendar-grid">
+						<view 
+							class="calendar-day"
+							v-for="(day, dayIndex) in month.days"
+							:key="dayIndex"
+							:class="{ 
+								'selected': isSelected(day),
+								'today': isToday(day),
+								'other-month': !day.isCurrentMonth
+							}"
+							@click="selectDate(day)"
+						>
+							<text class="day-number">{{day.day}}</text>
+							<view class="event-dot" v-if="hasEvent(day)"></view>
+						</view>
+					</view>
+				</swiper-item>
+			</swiper>
+		</view>
 
 		<!-- 事件列表 -->
 		<view class="event-section">
@@ -62,7 +75,7 @@
 					<view class="event-tags">
 						<text
 							class="tag"
-							v-for="labelId in event.labelIdList.split(',')"
+							v-for="labelId in getEventLabelIds(event)"
 							:key="labelId"
 							:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
 						>
@@ -100,6 +113,8 @@
 	const swiperIndex = ref(0)
 	const calendarMonths = ref<any[]>([])
 	const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+	const yearOptions = Array.from({ length: 101 }, (_, index) => `${2000 + index}年`)
+	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
 
 	// 获取选中的日期文本
 	const selectedDateText = computed(() => {
@@ -117,17 +132,19 @@
 	const generateCalendar = () => {
 		const months: any[] = []
 		for (let i = -1; i <= 1; i++) {
-			const year = currentYear.value
-			let month = currentMonth.value + i
-			if (month > 12) {
-				month = 1
-			} else if (month < 1) {
-				month = 12
-			}
-			months.push(generateMonthDays(year, month))
+			const offsetResult = getOffsetYearMonth(currentYear.value, currentMonth.value, i)
+			months.push(generateMonthDays(offsetResult.year, offsetResult.month))
 		}
 		calendarMonths.value = months
 		swiperIndex.value = 1
+	}
+
+	const getOffsetYearMonth = (year: number, month: number, offset: number) => {
+		const date = new Date(year, month - 1 + offset, 1)
+		return {
+			year: date.getFullYear(),
+			month: date.getMonth() + 1
+		}
 	}
 
 	// 生成某月的日期
@@ -176,6 +193,15 @@
 		return { year, month, days }
 	}
 
+	const syncSelectedDateToCurrentMonth = () => {
+		const lastDay = new Date(currentYear.value, currentMonth.value, 0).getDate()
+		selectedDate.value = {
+			year: currentYear.value,
+			month: currentMonth.value,
+			day: Math.min(selectedDate.value.day, lastDay)
+		}
+	}
+
 	// 判断是否是选中的日期
 	const isSelected = (day: any): boolean => {
 		return day.year === selectedDate.value.year && 
@@ -194,14 +220,7 @@
 	// 判断某天是否有事件
 	const hasEvent = (day: any): boolean => {
 		const dayStart = new Date(day.year, day.month - 1, day.day).getTime()
-		const dayEnd = dayStart + 24 * 60 * 60 * 1000
-
-		return events.value.some(event => {
-			const lastRecord = EventManager.getEventHistory(event.id)[0]
-			const nextDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
-			const nextDueDate = dayStart + nextDue * 24 * 60 * 60 * 1000
-			return nextDueDate >= dayStart && nextDueDate < dayEnd
-		})
+		return events.value.some(event => isEventRelevantOnDate(event, dayStart))
 	}
 
 	// 选择日期
@@ -218,18 +237,6 @@
 		}
 	}
 
-	// 上一年
-	const prevYear = () => {
-		currentYear.value--
-		generateCalendar()
-	}
-
-	// 下一年
-	const nextYear = () => {
-		currentYear.value++
-		generateCalendar()
-	}
-
 	// 上一月
 	const prevMonth = () => {
 		currentMonth.value--
@@ -237,6 +244,7 @@
 			currentMonth.value = 12
 			currentYear.value--
 		}
+		syncSelectedDateToCurrentMonth()
 		generateCalendar()
 	}
 
@@ -247,6 +255,7 @@
 			currentMonth.value = 1
 			currentYear.value++
 		}
+		syncSelectedDateToCurrentMonth()
 		generateCalendar()
 	}
 
@@ -258,6 +267,18 @@
 		} else if (index === 2) {
 			nextMonth()
 		}
+	}
+
+	const onYearChange = (e: any) => {
+		currentYear.value = 2000 + parseInt(e.detail.value)
+		syncSelectedDateToCurrentMonth()
+		generateCalendar()
+	}
+
+	const onMonthChange = (e: any) => {
+		currentMonth.value = parseInt(e.detail.value) + 1
+		syncSelectedDateToCurrentMonth()
+		generateCalendar()
 	}
 
 	// 获取标签名称
@@ -272,42 +293,46 @@
 		return label ? label.color : '#007AFF'
 	}
 
+	const getEventLabelIds = (event: Event): number[] => {
+		if (!event.labelIdList) return []
+		return event.labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id))
+	}
+
 	// 获取短备注
 	const getShortRemark = (remark: string): string => {
 		if (!remark) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
 	}
 
+	const getStartOfDay = (timestamp: number): number => {
+		const date = new Date(timestamp)
+		return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+	}
+
+	const isEventRelevantOnDate = (event: Event, selectedDayStart: number): boolean => {
+		const history = EventManager.getEventHistory(event.id)
+
+		for (let i = 0; i < history.length; i++) {
+			if (getStartOfDay(history[i].lastCompleteDate) === selectedDayStart) {
+				return true
+			}
+		}
+
+		if (event.isTerminated) {
+			return false
+		}
+
+		const dueDateStart = EventManager.getDueDateStart(event, history[0]?.lastCompleteDate || null)
+		return dueDateStart === selectedDayStart
+	}
+
 	// 筛选选中日期的事件
 	const filteredEvents = computed(() => {
-		const now = new Date()
-		const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
 		const selectedDateStart = new Date(selectedDate.value.year, selectedDate.value.month - 1, selectedDate.value.day).getTime()
-		const selectedDateEnd = selectedDateStart + 24 * 60 * 60 * 1000
-
-		return events.value.filter(event => {
-			// 首先检查是否有在选中日期完成过的记录
-			const history = EventManager.getEventHistory(event.id)
-			for (let i = 0; i < history.length; i++) {
-				const record = history[i]
-				const recordDate = new Date(record.lastCompleteDate)
-				const recordDateStart = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()).getTime()
-				if (recordDateStart >= selectedDateStart && recordDateStart < selectedDateEnd) {
-					return true
-				}
-			}
-
-			// 如果没有完成记录，且选中日期是今天或未来，检查下一个完成日
-			if (selectedDateStart >= todayStart) {
-				if (event.isTerminated) return false
-				const lastRecord = history[0]
-				const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
-				const nextDueDate = todayStart + daysUntilDue * 24 * 60 * 60 * 1000
-				return nextDueDate >= selectedDateStart && nextDueDate < selectedDateEnd
-			}
-
-			return false
-		})
+		return events.value.filter(event => isEventRelevantOnDate(event, selectedDateStart))
 	})
 
 	// 跳转到详情页
@@ -326,18 +351,27 @@
 <style>
 	.container {
 		flex: 1;
-		background-color: #f5f5f5;
+		background-color: #f4efe7;
 		display: flex;
 		flex-direction: column;
-		padding: 10px;
+		padding: 12px;
+	}
+
+	.calendar-shell {
+		width: 94%;
+		align-self: center;
 	}
 
 	/* 日历头部 */
 	.calendar-header {
-		background-color: #fff;
-		padding: 8px 12px;
-		border-bottom: 1px solid #f0f0f0;
-		border-radius: 8px 8px 0 0;
+		background-color: #fff9f2;
+		padding: 12px 14px;
+		border-bottom: 1px solid #efe3d7;
+		border-radius: 24px 24px 0 0;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		border-bottom-width: 0;
 	}
 
 	.year-month-nav {
@@ -346,67 +380,109 @@
 		justify-content: space-between;
 	}
 
+	.picker-group {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.header-picker {
+		margin: 0 4px;
+	}
+
+	.header-picker-inner {
+		flex-direction: row;
+		align-items: center;
+		background-color: #fffdf9;
+		border-radius: 999px;
+		padding: 8px 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.month-picker .header-picker-inner {
+		min-width: 72px;
+		justify-content: center;
+	}
+
 	.nav-btn {
-		width: 40px;
-		height: 32px;
-		line-height: 32px;
-		background-color: #f5f5f5;
-		border-radius: 16px;
-		font-size: 14px;
+		width: 34px;
+		height: 34px;
+		line-height: 34px;
+		background-color: #f2ebe2;
+		border-radius: 17px;
+		font-size: 18px;
 		padding: 0;
+		color: #4d5b67;
 	}
 
 	.current-date {
-		font-size: 16px;
+		font-size: 14px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
+	}
+
+	.picker-arrow {
+		font-size: 10px;
+		color: #8792a1;
+		margin-left: 6px;
 	}
 
 	/* 星期标题 */
 	.weekdays {
-		background-color: #fff;
+		background-color: #fff9f2;
 		flex-direction: row;
-		padding: 8px 0;
-		border-bottom: 1px solid #f0f0f0;
+		padding: 10px 0;
+		border-bottom: 1px solid #efe3d7;
+		border-left-width: 1px;
+		border-right-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
 	}
 
 	.weekday {
 		flex: 1;
 		text-align: center;
-		font-size: 13px;
+		font-size: 12px;
 		color: #666;
 		font-weight: bold;
 	}
 
 	/* 日历网格 */
 	.calendar-swiper {
-		height: 240px;
-		background-color: #fff;
-		border-radius: 0 0 8px 8px;
+		height: 274px;
+		background-color: #fff9f2;
+		border-radius: 0 0 24px 24px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		border-top-width: 0;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
 	}
 
 	.calendar-grid {
 		flex-direction: row;
 		flex-wrap: wrap;
-		padding: 2px;
+		padding: 8px 6px 12px;
 	}
 
 	.calendar-day {
 		width: 14.28%;
-		height: 32px;
+		height: 42px;
 		justify-content: center;
 		align-items: center;
 		position: relative;
 	}
 
 	.day-number {
-		font-size: 13px;
-		color: #333;
+		font-size: 14px;
+		color: #24323a;
 	}
 
 	.calendar-day.selected {
-		background-color: #007AFF;
+		background-color: #1f7a72;
 		border-radius: 25px;
+		box-shadow: 0 8px 16px rgba(31, 122, 114, 0.18);
 	}
 
 	.calendar-day.selected .day-number {
@@ -414,12 +490,12 @@
 	}
 
 	.calendar-day.today {
-		background-color: #e6f2ff;
+		background-color: #e8f4f2;
 		border-radius: 25px;
 	}
 
 	.calendar-day.today .day-number {
-		color: #007AFF;
+		color: #1f7a72;
 		font-weight: bold;
 	}
 
@@ -429,18 +505,18 @@
 
 	.event-dot {
 		position: absolute;
-		bottom: 5px;
+		bottom: 2px;
 		width: 6px;
 		height: 6px;
-		background-color: #ff4d4f;
+		background-color: #e07a5f;
 		border-radius: 3px;
 	}
 
 	/* 事件列表 */
 	.event-section {
 		flex: 1;
-		background-color: #f5f5f5;
-		padding: 10px;
+		background-color: transparent;
+		padding: 12px 2px 0;
 		margin-top: 10px;
 	}
 
@@ -451,7 +527,7 @@
 	.section-title text {
 		font-size: 15px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
 	}
 
 	.event-list {
@@ -459,11 +535,15 @@
 	}
 
 	.event-card {
-		background-color: #fff;
-		border-radius: 8px;
-		padding: 12px;
+		background-color: #fffaf3;
+		border-radius: 20px;
+		padding: 14px;
 		margin-bottom: 10px;
 		flex-direction: column;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 10px 24px rgba(36, 50, 58, 0.05);
 	}
 
 	.event-header {
@@ -477,19 +557,19 @@
 		flex: 1;
 		font-size: 16px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
 	}
 
 	.event-status {
 		font-size: 12px;
-		padding: 2px 8px;
-		border-radius: 10px;
-		background-color: #4CAF50;
+		padding: 4px 10px;
+		border-radius: 999px;
+		background-color: #1f7a72;
 		color: #fff;
 	}
 
 	.event-status.terminated {
-		background-color: #999;
+		background-color: #9a8f84;
 	}
 
 	.event-remark {
@@ -498,7 +578,7 @@
 
 	.remark-text {
 		font-size: 13px;
-		color: #666;
+		color: #72808d;
 		line-height: 1.5;
 	}
 

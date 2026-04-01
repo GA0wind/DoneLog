@@ -5,7 +5,10 @@ export class StorageUtils {
   // 存储键名常量
   static readonly EVENTS_KEY = 'donelog_events'
   static readonly COMPLETION_RECORDS_KEY = 'donelog_completion_records'
-  static readonly LABELS_KEY = 'donelog_labels'
+  static readonly EVENT_LABELS_KEY = 'donelog_event_labels'
+  static readonly ACCOUNT_LABELS_KEY = 'donelog_account_labels'
+  static readonly ACCOUNT_ENTRIES_KEY = 'donelog_account_entries'
+  static readonly LEGACY_LABELS_KEY = 'donelog_labels'
 
   /**
    * 获取所有事件
@@ -62,25 +65,86 @@ export class StorageUtils {
   /**
    * 获取所有标签
    */
-  static getLabels(): Label[] {
+  static getEventLabels(): Label[] {
     try {
-      const data = uni.getStorageSync(this.LABELS_KEY)
-      return data ? JSON.parse(data) : []
+      const data = uni.getStorageSync(this.EVENT_LABELS_KEY)
+      if (data) {
+        return JSON.parse(data)
+      }
+
+      const legacyData = uni.getStorageSync(this.LEGACY_LABELS_KEY)
+      const labels = legacyData ? JSON.parse(legacyData) : []
+      if (labels.length > 0) {
+        uni.setStorageSync(this.EVENT_LABELS_KEY, JSON.stringify(labels))
+      }
+      return labels
     } catch (e) {
-      console.error('获取标签列表失败', e)
+      console.error('获取事件标签列表失败', e)
       return []
     }
   }
 
   /**
-   * 保存标签列表
+   * 保存事件标签列表
    */
-  static saveLabels(labels: Label[]): boolean {
+  static saveEventLabels(labels: Label[]): boolean {
     try {
-      uni.setStorageSync(this.LABELS_KEY, JSON.stringify(labels))
+      uni.setStorageSync(this.EVENT_LABELS_KEY, JSON.stringify(labels))
       return true
     } catch (e) {
-      console.error('保存标签列表失败', e)
+      console.error('保存事件标签列表失败', e)
+      return false
+    }
+  }
+
+  /**
+   * 获取记账标签列表
+   */
+  static getAccountLabels(): Label[] {
+    try {
+      const data = uni.getStorageSync(this.ACCOUNT_LABELS_KEY)
+      return data ? JSON.parse(data) : []
+    } catch (e) {
+      console.error('获取记账标签列表失败', e)
+      return []
+    }
+  }
+
+  /**
+   * 保存记账标签列表
+   */
+  static saveAccountLabels(labels: Label[]): boolean {
+    try {
+      uni.setStorageSync(this.ACCOUNT_LABELS_KEY, JSON.stringify(labels))
+      return true
+    } catch (e) {
+      console.error('保存记账标签列表失败', e)
+      return false
+    }
+  }
+
+  /**
+   * 获取记账记录
+   */
+  static getAccountEntries(): AccountEntry[] {
+    try {
+      const data = uni.getStorageSync(this.ACCOUNT_ENTRIES_KEY)
+      return data ? JSON.parse(data) : []
+    } catch (e) {
+      console.error('获取记账记录失败', e)
+      return []
+    }
+  }
+
+  /**
+   * 保存记账记录
+   */
+  static saveAccountEntries(entries: AccountEntry[]): boolean {
+    try {
+      uni.setStorageSync(this.ACCOUNT_ENTRIES_KEY, JSON.stringify(entries))
+      return true
+    } catch (e) {
+      console.error('保存记账记录失败', e)
       return false
     }
   }
@@ -119,4 +183,18 @@ export type Label = {
   name: string
   color: string
   sortOrder: number
+}
+
+/**
+ * 记账记录类型定义
+ */
+export type AccountEntry = {
+  id: number
+  type: 'expense' | 'income'
+  amount: number
+  labelId: number
+  remark: string
+  occurredAt: number
+  createTime: number
+  updateTime: number
 }

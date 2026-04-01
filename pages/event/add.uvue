@@ -141,7 +141,7 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { Event } from '@/utils/storage.uts'
+	import { Event, Label } from '@/utils/storage.uts'
 
 	// 响应式数据
 	const eventName = ref('')
@@ -232,7 +232,7 @@
 			hideAddLabelModal()
 		} else {
 			uni.showToast({
-				title: '添加失败',
+				title: '添加失败或名称重复',
 				icon: 'none'
 			})
 		}
@@ -278,6 +278,17 @@
 			return
 		}
 
+		if (repeatType.value === 'interval') {
+			const interval = parseInt(intervalDays.value)
+			if (Number.isNaN(interval) || interval <= 0) {
+				uni.showToast({
+					title: '间隔天数必须大于 0',
+					icon: 'none'
+				})
+				return
+			}
+		}
+
 		if (repeatType.value === 'date' && !nextDueDate.value) {
 			uni.showToast({
 				title: '请选择下次完成时间',
@@ -321,14 +332,18 @@
 <style>
 	.container {
 		padding: 15px;
-		background-color: #f5f5f5;
+		background-color: #f4efe7;
 		min-height: 100vh;
 	}
 
 	.form {
-		background-color: #fff;
-		border-radius: 10px;
-		padding: 15px;
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
 	}
 
 	.form-item {
@@ -338,18 +353,22 @@
 	.label {
 		display: block;
 		font-size: 14px;
-		color: #333;
-		margin-bottom: 8px;
+		color: #4e5b67;
+		margin-bottom: 10px;
 		font-weight: 500;
 	}
 
 	.input {
 		width: 100%;
 		height: 44px;
-		background-color: #f5f5f5;
-		border-radius: 8px;
+		background-color: #fffdf9;
+		border-radius: 16px;
 		padding: 0 15px;
 		font-size: 14px;
+		color: #24323a;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
 	}
 
 	.tags-container {
@@ -359,12 +378,15 @@
 
 	.tag-selector {
 		min-height: 44px;
-		background-color: #f5f5f5;
-		border-radius: 8px;
+		background-color: #fffdf9;
+		border-radius: 16px;
 		padding: 8px 12px;
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
 	}
 
 	.selected-tags {
@@ -385,22 +407,26 @@
 
 	.placeholder {
 		font-size: 14px;
-		color: #999;
+		color: #98a2ad;
 	}
 
 	.arrow {
 		margin-left: 10px;
 		font-size: 12px;
-		color: #999;
+		color: #8792a1;
 	}
 
 	.textarea {
 		width: 100%;
 		min-height: 100px;
-		background-color: #f5f5f5;
-		border-radius: 8px;
+		background-color: #fffdf9;
+		border-radius: 16px;
 		padding: 10px 15px;
 		font-size: 14px;
+		color: #24323a;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
 	}
 
 	.radio-item {
@@ -416,21 +442,25 @@
 
 	.picker {
 		height: 44px;
-		background-color: #f5f5f5;
-		border-radius: 8px;
+		background-color: #fffdf9;
+		border-radius: 16px;
 		padding: 0 15px;
 		justify-content: center;
 		font-size: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
 	}
 
 	.save-btn {
-		background-color: #007AFF;
+		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
 		color: #fff;
-		height: 44px;
-		line-height: 44px;
-		border-radius: 22px;
+		height: 48px;
+		line-height: 48px;
+		border-radius: 24px;
 		font-size: 16px;
 		margin-top: 20px;
+		box-shadow: 0 14px 24px rgba(31, 122, 114, 0.2);
 	}
 
 	/* 弹窗样式 */
@@ -447,8 +477,8 @@
 	}
 
 	.modal-content {
-		background-color: #fff;
-		border-radius: 10px;
+		background-color: #fffaf3;
+		border-radius: 22px;
 		width: 85%;
 		max-height: 70vh;
 	}
@@ -461,7 +491,7 @@
 	.modal-title {
 		font-size: 18px;
 		font-weight: bold;
-		color: #333;
+		color: #24323a;
 		text-align: center;
 	}
 
@@ -483,7 +513,7 @@
 	}
 
 	.label-item.selected {
-		background-color: #f0f8ff;
+		background-color: #e8f4f2;
 	}
 
 	.label-info {
@@ -501,12 +531,12 @@
 
 	.label-name {
 		font-size: 16px;
-		color: #333;
+		color: #24323a;
 	}
 
 	.check-icon {
 		font-size: 20px;
-		color: #007AFF;
+		color: #1f7a72;
 		font-weight: bold;
 	}
 
@@ -518,8 +548,8 @@
 
 	.add-label-btn {
 		flex: 1;
-		background-color: #f5f5f5;
-		color: #333;
+		background-color: #f2ebe2;
+		color: #4d5b67;
 		height: 40px;
 		line-height: 40px;
 		border-radius: 20px;
@@ -529,8 +559,8 @@
 
 	.cancel-btn {
 		flex: 1;
-		background-color: #f5f5f5;
-		color: #333;
+		background-color: #f2ebe2;
+		color: #4d5b67;
 		height: 40px;
 		line-height: 40px;
 		border-radius: 20px;
@@ -540,7 +570,7 @@
 
 	.confirm-btn {
 		flex: 1;
-		background-color: #007AFF;
+		background-color: #1f7a72;
 		color: #fff;
 		height: 40px;
 		line-height: 40px;
@@ -565,6 +595,6 @@
 	}
 
 	.color-option.selected {
-		box-shadow: 0 0 0 2px #fff, 0 0 0 4px #007AFF;
+		box-shadow: 0 0 0 2px #fffaf3, 0 0 0 4px #1f7a72;
 	}
 </style>

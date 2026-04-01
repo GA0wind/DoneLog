@@ -1,19 +1,20 @@
-<template>
+﻿<template>
 	<view class="container">
-		<!-- 标签列表 -->
-		<view class="label-list">
-			<view 
-				class="label-item" 
-				v-for="label in labels" 
-				:key="label.id"
-				@click="editLabel(label)"
-			>
-				<view class="label-info">
+		<view class="tips-card">
+			<text class="tips-title">{{pageTitle}}</text>
+			<text class="tips-desc">支持新增、编辑、删除和上下排序。排序结果会直接影响标签显示顺序。</text>
+		</view>
+
+		<view class="list-card">
+			<view class="label-item" v-for="label in labels" :key="label.id">
+				<view class="label-info" @click="editLabel(label)">
 					<view class="label-color" :style="{ backgroundColor: label.color }"></view>
 					<text class="label-name">{{label.name}}</text>
 				</view>
-				<view class="label-actions">
-					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删除</button>
+				<view class="actions">
+					<button class="sort-btn" :disabled="label.sortOrder === 1" @click.stop="moveUp(label)">↑</button>
+					<button class="sort-btn" :disabled="label.sortOrder === labels.length" @click.stop="moveDown(label)">↓</button>
+					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删</button>
 				</view>
 			</view>
 			<view class="empty-tip" v-if="labels.length === 0">
@@ -21,16 +22,14 @@
 			</view>
 		</view>
 
-		<!-- 添加标签按钮 -->
 		<view class="add-btn" @click="showAddDialog">
 			<text class="add-icon">+</text>
 		</view>
 
-		<!-- 添加/编辑标签弹窗 -->
 		<view class="modal" v-if="showModal" @click="hideModal">
 			<view class="modal-content" @click.stop>
 				<view class="modal-header">
-					<text class="modal-title">{{isEdit ? '编辑标签' : '添加标签'}}</text>
+					<text class="modal-title">{{isEdit ? '编辑标签' : '新增标签'}}</text>
 				</view>
 				<view class="modal-body">
 					<view class="form-item">
@@ -40,11 +39,11 @@
 					<view class="form-item">
 						<text class="label">标签颜色</text>
 						<view class="color-options">
-							<view 
-								class="color-option" 
-								v-for="color in colorOptions" 
+							<view
+								class="color-option"
+								v-for="color in colorOptions"
 								:key="color"
-								:class="{ 'selected': labelColor === color }"
+								:class="{ selected: labelColor === color }"
 								:style="{ backgroundColor: color }"
 								@click="labelColor = color"
 							>
@@ -63,45 +62,47 @@
 </template>
 
 <script setup lang="uts">
-	import { LabelManager } from '@/utils/labelManager.uts'
+	import { LabelManager, LabelKind } from '@/utils/labelManager.uts'
 	import { Label } from '@/utils/storage.uts'
 
-	// 响应式数据
 	const labels = ref<Label[]>([])
+	const kind = ref<LabelKind>('event')
+	const pageTitle = ref('事件标签管理')
 	const showModal = ref(false)
 	const isEdit = ref(false)
 	const editingLabelId = ref(0)
 	const labelName = ref('')
-	const labelColor = ref('#007AFF')
+	const labelColor = ref('#1F7A72')
 
-	// 预设颜色选项
 	const colorOptions = [
-		'#007AFF', // 蓝色
-		'#FF3B30', // 红色
-		'#FF9500', // 橙色
-		'#FFCC00', // 黄色
-		'#4CD964', // 绿色
-		'#5AC8FA', // 浅蓝
-		'#5856D6', // 紫色
-		'#FF2D55', // 粉色
-		'#8E8E93', // 灰色
-		'#34C759'  // 深绿
+		'#1F7A72',
+		'#2A9D8F',
+		'#E07A5F',
+		'#E9C46A',
+		'#8AB17D',
+		'#5D7FA3',
+		'#B56576',
+		'#6D597A'
 	]
 
-	// 加载标签列表
 	const loadLabels = () => {
-		labels.value = LabelManager.getSortedLabels()
+		labels.value = LabelManager.getSortedLabels(kind.value)
 	}
 
-	// 显示添加弹窗
+	const syncTitle = () => {
+		pageTitle.value = kind.value === 'event' ? '事件标签管理' : '记账标签管理'
+		uni.setNavigationBarTitle({
+			title: pageTitle.value
+		})
+	}
+
 	const showAddDialog = () => {
 		isEdit.value = false
 		labelName.value = ''
-		labelColor.value = '#007AFF'
+		labelColor.value = '#1F7A72'
 		showModal.value = true
 	}
 
-	// 编辑标签
 	const editLabel = (label: Label) => {
 		isEdit.value = true
 		editingLabelId.value = label.id
@@ -110,78 +111,75 @@
 		showModal.value = true
 	}
 
-	// 隐藏弹窗
 	const hideModal = () => {
 		showModal.value = false
 	}
 
-	// 保存标签
 	const saveLabel = () => {
 		if (!labelName.value.trim()) {
-			uni.showToast({
-				title: '请输入标签名称',
-				icon: 'none'
-			})
+			uni.showToast({ title: '请输入标签名称', icon: 'none' })
 			return
 		}
 
 		let success = false
 		if (isEdit.value) {
-			// 编辑标签
 			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
-			const label: Label = {
+			success = LabelManager.updateLabel({
 				id: editingLabelId.value,
 				name: labelName.value,
 				color: labelColor.value,
 				sortOrder: currentLabel?.sortOrder || 0
-			}
-			success = LabelManager.updateLabel(label)
+			}, kind.value)
 		} else {
-			// 添加标签
-			success = LabelManager.addLabel(labelName.value, labelColor.value)
+			success = LabelManager.addLabel(labelName.value, labelColor.value, kind.value)
 		}
 
-		if (success) {
-			uni.showToast({
-				title: isEdit.value ? '修改成功' : '添加成功',
-				icon: 'success'
-			})
-			hideModal()
-			loadLabels()
-		} else {
-			uni.showToast({
-				title: isEdit.value ? '修改失败或名称重复' : '添加失败或名称重复',
-				icon: 'none'
-			})
+		if (!success) {
+			uni.showToast({ title: '保存失败或名称重复', icon: 'none' })
+			return
 		}
+
+		hideModal()
+		loadLabels()
 	}
 
-	// 删除标签
 	const deleteLabel = (labelId: number) => {
 		uni.showModal({
 			title: '确认删除',
-			content: '确定要删除这个标签吗？',
+			content: '删除后对应记录将取消关联该标签，确定继续吗？',
 			success: (res) => {
-				if (res.confirm) {
-					const success = LabelManager.deleteLabel(labelId)
-					if (success) {
-						uni.showToast({
-							title: '删除成功',
-							icon: 'success'
-						})
-						loadLabels()
-					} else {
-						uni.showToast({
-							title: '删除失败',
-							icon: 'none'
-						})
-					}
+				if (!res.confirm) return
+				const success = LabelManager.deleteLabel(labelId, kind.value)
+				if (success) {
+					loadLabels()
+					uni.showToast({ title: '删除成功', icon: 'success' })
 				}
 			}
 		})
 	}
 
-	// 页面显示时加载数据
+	const moveUp = (label: Label) => {
+		if (label.sortOrder <= 1) return
+		if (LabelManager.updateLabelOrder(label.id, label.sortOrder - 1, kind.value)) {
+			loadLabels()
+		}
+	}
+
+	const moveDown = (label: Label) => {
+		if (label.sortOrder >= labels.value.length) return
+		if (LabelManager.updateLabelOrder(label.id, label.sortOrder + 1, kind.value)) {
+			loadLabels()
+		}
+	}
+
+	onLoad((options: any) => {
+		if (options.kind === 'account') {
+			kind.value = 'account'
+		}
+		syncTitle()
+		loadLabels()
+	})
+
 	onShow(() => {
 		loadLabels()
 	})
@@ -189,33 +187,58 @@
 
 <style>
 	.container {
-		background-color: #f4efe7;
 		min-height: 100vh;
-		padding: 15px;
+		background-color: #f4efe7;
+		padding: 16px;
 		padding-bottom: 100px;
 	}
 
-	/* 标签列表 */
-	.label-list {
+	.tips-card,
+	.list-card,
+	.modal-content {
 		background-color: #fffaf3;
 		border-radius: 24px;
-		overflow: hidden;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eadfd2;
-		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+	}
+
+	.tips-card {
+		padding: 18px;
+		margin-bottom: 14px;
+	}
+
+	.tips-title {
+		display: block;
+		font-size: 20px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 8px;
+	}
+
+	.tips-desc {
+		font-size: 13px;
+		line-height: 1.6;
+		color: #71808c;
+	}
+
+	.list-card {
+		overflow: hidden;
 	}
 
 	.label-item {
 		flex-direction: row;
-		justify-content: space-between;
 		align-items: center;
+		justify-content: space-between;
 		padding: 16px;
-		border-bottom: 1px solid #f1e6db;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #f1e7dd;
 	}
 
 	.label-item:last-child {
-		border-bottom: none;
+		border-bottom-width: 0;
 	}
 
 	.label-info {
@@ -225,116 +248,112 @@
 	}
 
 	.label-color {
-		width: 20px;
-		height: 20px;
-		border-radius: 10px;
+		width: 18px;
+		height: 18px;
+		border-radius: 9px;
 		margin-right: 10px;
 	}
 
 	.label-name {
 		font-size: 16px;
-		color: #24323a;
 		font-weight: 600;
+		color: #24323a;
 	}
 
-	.label-actions {
+	.actions {
 		flex-direction: row;
+		align-items: center;
+	}
+
+	.sort-btn,
+	.delete-btn {
+		min-width: 34px;
+		height: 34px;
+		line-height: 34px;
+		padding: 0 10px;
+		border-radius: 999px;
+		font-size: 13px;
+		margin-left: 8px;
+	}
+
+	.sort-btn {
+		background-color: #f0e7dc;
+		color: #4d5b67;
 	}
 
 	.delete-btn {
 		background-color: #e07a5f;
 		color: #fff;
-		font-size: 13px;
-		padding: 0 14px;
-		height: 32px;
-		line-height: 32px;
-		border-radius: 999px;
 	}
 
 	.empty-tip {
+		padding: 28px;
 		text-align: center;
-		padding: 50px 0;
-		color: #999;
+		color: #8792a1;
 	}
 
-	/* 添加按钮 */
 	.add-btn {
 		position: fixed;
-		right: 20px;
-		bottom: 100px;
-		width: 56px;
-		height: 56px;
+		right: 18px;
+		bottom: 90px;
+		width: 58px;
+		height: 58px;
+		border-radius: 29px;
 		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
-		border-radius: 28px;
 		justify-content: center;
 		align-items: center;
-		box-shadow: 0 16px 30px rgba(31, 122, 114, 0.26);
-		border-width: 3px;
-		border-style: solid;
-		border-color: rgba(255, 250, 243, 0.9);
+		box-shadow: 0 16px 28px rgba(31, 122, 114, 0.22);
 	}
 
 	.add-icon {
 		font-size: 32px;
 		color: #fff;
-		font-weight: 300;
 	}
 
-	/* 弹窗 */
 	.modal {
 		position: fixed;
 		top: 0;
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background-color: rgba(0, 0, 0, 0.5);
+		background-color: rgba(0, 0, 0, 0.36);
 		justify-content: center;
 		align-items: center;
-		z-index: 1000;
+		padding: 16px;
 	}
 
 	.modal-content {
-		background-color: #fffaf3;
-		border-radius: 22px;
-		width: 80%;
-		max-width: 400px;
-	}
-
-	.modal-header {
-		padding: 15px;
-		border-bottom: 1px solid #f0f0f0;
+		width: 100%;
+		padding: 18px;
 	}
 
 	.modal-title {
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;
-		text-align: center;
 	}
 
-	.modal-body {
-		padding: 15px;
+	.modal-header,
+	.modal-footer {
+		margin-bottom: 12px;
 	}
 
 	.form-item {
-		margin-bottom: 15px;
+		margin-bottom: 14px;
 	}
 
 	.label {
 		display: block;
 		font-size: 14px;
-		color: #4e5b67;
+		color: #4d5b67;
 		margin-bottom: 8px;
-		font-weight: 500;
 	}
 
 	.input {
-		width: 100%;
 		height: 44px;
 		background-color: #fffdf9;
 		border-radius: 16px;
-		padding: 0 15px;
-		font-size: 14px;
+		padding: 0 14px;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
@@ -346,9 +365,9 @@
 	}
 
 	.color-option {
-		width: 36px;
-		height: 36px;
-		border-radius: 18px;
+		width: 34px;
+		height: 34px;
+		border-radius: 17px;
 		margin-right: 10px;
 		margin-bottom: 10px;
 		justify-content: center;
@@ -361,26 +380,24 @@
 
 	.check-icon {
 		color: #fff;
-		font-size: 20px;
-		font-weight: bold;
+		font-size: 18px;
 	}
 
 	.modal-footer {
 		flex-direction: row;
-		padding: 15px;
-		border-top: 1px solid #f0f0f0;
 	}
 
-	.cancel-btn, .confirm-btn {
+	.cancel-btn,
+	.confirm-btn {
 		flex: 1;
-		height: 40px;
-		line-height: 40px;
-		border-radius: 20px;
-		font-size: 16px;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
 	}
 
 	.cancel-btn {
-		background-color: #f2ebe2;
+		background-color: #f0e7dc;
 		color: #4d5b67;
 		margin-right: 10px;
 	}
