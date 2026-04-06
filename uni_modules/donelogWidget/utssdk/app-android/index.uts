@@ -1,0 +1,206 @@
+import Context from 'android.content.Context'
+import Intent from 'android.content.Intent'
+import Activity from 'android.app.Activity'
+import Bundle from 'android.os.Bundle'
+import PendingIntent from 'android.app.PendingIntent'
+import AppWidgetManager from 'android.appwidget.AppWidgetManager'
+import AppWidgetProvider from 'android.appwidget.AppWidgetProvider'
+import ComponentName from 'android.content.ComponentName'
+import RemoteViews from 'android.widget.RemoteViews'
+import View from 'android.view.View'
+
+const PREF_NAME = 'donelog_widget_pref'
+const SNAPSHOT_KEY = 'snapshot'
+const PENDING_ACTION_KEY = 'pending_action'
+const WIDGET_PROVIDER_CLASS = 'uts.sdk.modules.donelogWidget.DoneLogWidgetProvider'
+
+type WidgetItem = {
+	id: number
+	name: string
+	statusText: string
+	tagText: string
+	priority: string
+}
+
+type WidgetPayload = {
+	items: WidgetItem[]
+	overview: {
+		income: number
+		expense: number
+		count: number
+	}
+}
+
+function getPrefs(context: Context) {
+	return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+}
+
+function getLayoutId(context: Context): number {
+	return context.getResources().getIdentifier('donelog_widget', 'layout', context.getPackageName())
+}
+
+function getViewId(context: Context, name: string): number {
+	return context.getResources().getIdentifier(name, 'id', context.getPackageName())
+}
+
+function parseSnapshot(snapshot: string): WidgetPayload {
+	if (!snapshot) {
+		return {
+			items: [],
+			overview: {
+				income: 0,
+				expense: 0,
+				count: 0
+			}
+		}
+	}
+
+	try {
+		const parsed = JSON.parse(snapshot)
+		if (Array.isArray(parsed)) {
+			return {
+				items: parsed as WidgetItem[],
+				overview: {
+					income: 0,
+					expense: 0,
+					count: 0
+				}
+			}
+		}
+		return parsed as WidgetPayload
+	} catch (e) {
+		return {
+			items: [],
+			overview: {
+				income: 0,
+				expense: 0,
+				count: 0
+			}
+		}
+	}
+}
+
+function buildActionIntent(context: Context, eventId: number): PendingIntent {
+	const intent = new Intent()
+	intent.setClassName(context, 'uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity')
+	intent.putExtra('eventId', eventId)
+	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+	return PendingIntent.getActivity(
+		context,
+		eventId,
+		intent,
+		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+	)
+}
+
+function applyRow(context: Context, views: RemoteViews, index: number, item: WidgetItem | null): void {
+	const rowId = getViewId(context, `row_${index}`)
+	const nameId = getViewId(context, `row_${index}_name`)
+	const statusId = getViewId(context, `row_${index}_status`)
+	const actionId = getViewId(context, `row_${index}_action`)
+
+	if (item == null) {
+		views.setViewVisibility(rowId, View.GONE)
+		return
+	}
+
+	views.setViewVisibility(rowId, View.VISIBLE)
+	views.setTextViewText(nameId, item.name)
+	views.setTextViewText(statusId, item.statusText)
+	const pendingIntent = buildActionIntent(context, item.id)
+	views.setOnClickPendingIntent(rowId, pendingIntent)
+	views.setOnClickPendingIntent(actionId, pendingIntent)
+}
+
+function updateWidgetViews(context: Context): void {
+	const layoutId = getLayoutId(context)
+	if (layoutId == 0) {
+		return
+	}
+
+	const views = new RemoteViews(context.getPackageName(), layoutId)
+	const snapshot = getPrefs(context).getString(SNAPSHOT_KEY, '')
+	const payload = parseSnapshot(snapshot == null ? '' : snapshot)
+	const items = payload.items
+	const subtitleId = getViewId(context, 'widget_subtitle')
+
+	if (items.length == 0) {
+		views.setTextViewText(subtitleId, `今日收支 ¥${payload.overview.expense.toFixed(2)} / ¥${payload.overview.income.toFixed(2)}`)
+	} else {
+		views.setTextViewText(subtitleId, `今日收支 ¥${payload.overview.expense.toFixed(2)} / ¥${payload.overview.income.toFixed(2)}`)
+	}
+
+	for (let index = 1; index <= 4; index++) {
+		const item = index <= items.length ? items[index - 1] : null
+		applyRow(context, views, index, item)
+	}
+
+	const manager = AppWidgetManager.getInstance(context)
+	const componentName = new ComponentName(context, WIDGET_PROVIDER_CLASS)
+	manager.updateAppWidget(componentName, views)
+}
+
+export function saveWidgetSnapshot(payload: string): void {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null) {
+		return
+	}
+
+	const context = activity.getApplicationContext()
+	getPrefs(context).edit().putString(SNAPSHOT_KEY, payload).apply()
+	updateWidgetViews(context)
+}
+
+export function consumePendingWidgetAction(): string {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null) {
+		return ''
+	}
+
+	const context = activity.getApplicationContext()
+	const prefs = getPrefs(context)
+	const stored = prefs.getString(PENDING_ACTION_KEY, '')
+	const payload = stored == null ? '' : stored
+	if (payload.length > 0) {
+		prefs.edit().remove(PENDING_ACTION_KEY).apply()
+	}
+	return payload
+}
+
+export function refreshWidget(): void {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null) {
+		return
+	}
+	updateWidgetViews(activity.getApplicationContext())
+}
+
+export class DoneLogWidgetProvider extends AppWidgetProvider {
+	override onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray): void {
+		super.onUpdate(context, appWidgetManager, appWidgetIds)
+		updateWidgetViews(context)
+	}
+}
+
+export class WidgetActionBridgeActivity extends Activity {
+	override onCreate(savedInstanceState: Bundle | null): void {
+		super.onCreate(savedInstanceState)
+
+		const eventId = this.getIntent().getIntExtra('eventId', 0)
+		if (eventId > 0) {
+			const payload = JSON.stringify({
+				type: 'open-complete',
+				eventId
+			})
+			getPrefs(this.getApplicationContext()).edit().putString(PENDING_ACTION_KEY, payload).apply()
+		}
+
+		const launchIntent = this.getPackageManager().getLaunchIntentForPackage(this.getPackageName())
+		if (launchIntent != null) {
+			launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+			this.startActivity(launchIntent)
+		}
+
+		this.finish()
+	}
+}

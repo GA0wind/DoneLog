@@ -8,11 +8,28 @@ export type LabelKind = 'event' | 'account'
 export class LabelManager {
   private static nextEventLabelId: number = 1
   private static nextAccountLabelId: number = 1
+  private static readonly defaultEventLabels: { name: string, color: string }[] = [
+    { name: '健身', color: '#1F7A72' },
+    { name: '学习', color: '#5D7FA3' },
+    { name: '喂猫', color: '#E07A5F' },
+    { name: '浇花', color: '#8AB17D' },
+    { name: '复盘', color: '#6D597A' }
+  ]
+  private static readonly defaultAccountLabels: { name: string, color: string }[] = [
+    { name: '餐饮', color: '#E07A5F' },
+    { name: '住宿', color: '#B56576' },
+    { name: '娱乐', color: '#6D597A' },
+    { name: '学习', color: '#5D7FA3' },
+    { name: '日用', color: '#8AB17D' }
+  ]
 
   /**
    * 初始化ID
    */
   static initIds(): void {
+    this.normalizeLabels('event')
+    this.normalizeLabels('account')
+
     const eventLabels = StorageUtils.getEventLabels()
     if (eventLabels.length > 0) {
       this.nextEventLabelId = Math.max(...eventLabels.map(l => l.id)) + 1
@@ -22,6 +39,9 @@ export class LabelManager {
     if (accountLabels.length > 0) {
       this.nextAccountLabelId = Math.max(...accountLabels.map(l => l.id)) + 1
     }
+
+    this.ensureDefaultLabels('event')
+    this.ensureDefaultLabels('account')
   }
 
   /**
@@ -108,10 +128,17 @@ export class LabelManager {
     }
 
     const entries = StorageUtils.getAccountEntries()
-    const updatedEntries = entries.map(entry => ({
-      ...entry,
-      labelId: entry.labelId === labelId ? 0 : entry.labelId
-    }))
+    const updatedEntries = entries.map(entry => {
+      const labelIds = entry.labelIdList
+        .split(',')
+        .map(id => parseInt(id))
+        .filter(id => !Number.isNaN(id) && id !== labelId)
+
+      return {
+        ...entry,
+        labelIdList: labelIds.join(',')
+      }
+    })
     return StorageUtils.saveAccountEntries(updatedEntries)
   }
 
@@ -167,5 +194,79 @@ export class LabelManager {
 
   private static saveLabelsByKind(kind: LabelKind, labels: Label[]): boolean {
     return kind === 'event' ? StorageUtils.saveEventLabels(labels) : StorageUtils.saveAccountLabels(labels)
+  }
+
+  private static ensureDefaultLabels(kind: LabelKind): void {
+    const defaults = kind === 'event' ? this.defaultEventLabels : this.defaultAccountLabels
+    const labels = this.getLabelsByKind(kind)
+    let changed = false
+    let nextSortOrder = labels.length > 0 ? Math.max(...labels.map(label => label.sortOrder)) + 1 : 1
+
+    defaults.forEach(item => {
+      if (labels.some(label => label.name === item.name)) {
+        return
+      }
+
+      const nextId = kind === 'event' ? this.nextEventLabelId++ : this.nextAccountLabelId++
+      labels.push({
+        id: nextId,
+        name: item.name,
+        color: item.color,
+        sortOrder: nextSortOrder++
+      })
+      changed = true
+    })
+
+    if (changed) {
+      this.saveLabelsByKind(kind, labels)
+    }
+  }
+
+  private static normalizeLabels(kind: LabelKind): void {
+    const labels = this.getLabelsByKind(kind)
+    if (labels.length === 0) {
+      return
+    }
+
+    const usedIds: number[] = []
+    const usedNames: string[] = []
+    const normalized: Label[] = []
+    let nextId = Math.max(...labels.map(label => label.id)) + 1
+    let changed = false
+
+    labels
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach(label => {
+        const normalizedName = label.name.trim()
+        if (!normalizedName) {
+          changed = true
+          return
+        }
+
+        if (usedNames.includes(normalizedName)) {
+          changed = true
+          return
+        }
+
+        let nextLabelId = label.id
+        if (usedIds.includes(nextLabelId) || nextLabelId <= 0) {
+          nextLabelId = nextId++
+          changed = true
+        }
+
+        usedIds.push(nextLabelId)
+        usedNames.push(normalizedName)
+        normalized.push({
+          ...label,
+          id: nextLabelId,
+          name: normalizedName,
+          sortOrder: normalized.length + 1
+        })
+      })
+
+    if (changed) {
+      this.saveLabelsByKind(kind, normalized)
+    }
   }
 }

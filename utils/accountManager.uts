@@ -1,4 +1,6 @@
 import { StorageUtils, AccountEntry } from './storage.uts'
+import { EventManager } from './eventManager.uts'
+import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
 export type StatsPeriod = 'week' | 'month'
 
@@ -6,6 +8,13 @@ export type AccountLabelStats = {
   labelId: number
   count: number
   totalAmount: number
+  type: 'expense' | 'income' | 'all'
+}
+
+export type AccountOverview = {
+  income: number
+  expense: number
+  count: number
 }
 
 /**
@@ -28,13 +37,19 @@ export class AccountManager {
   static addEntry(entry: Omit<AccountEntry, 'id' | 'createTime' | 'updateTime'>): boolean {
     const entries = StorageUtils.getAccountEntries()
     const newEntry: AccountEntry = {
-      ...entry,
+      type: entry.type,
+      amount: entry.amount,
+      labelIdList: entry.labelIdList,
+      remark: entry.remark,
+      occurredAt: entry.occurredAt,
       id: this.nextEntryId++,
       createTime: Date.now(),
       updateTime: Date.now()
     }
     entries.push(newEntry)
-    return StorageUtils.saveAccountEntries(entries)
+    const success = StorageUtils.saveAccountEntries(entries)
+    if (success) this.syncWidgetSnapshot()
+    return success
   }
 
   static updateEntry(entry: AccountEntry): boolean {
@@ -46,12 +61,16 @@ export class AccountManager {
       ...entry,
       updateTime: Date.now()
     }
-    return StorageUtils.saveAccountEntries(entries)
+    const success = StorageUtils.saveAccountEntries(entries)
+    if (success) this.syncWidgetSnapshot()
+    return success
   }
 
   static deleteEntry(entryId: number): boolean {
     const entries = StorageUtils.getAccountEntries().filter(entry => entry.id !== entryId)
-    return StorageUtils.saveAccountEntries(entries)
+    const success = StorageUtils.saveAccountEntries(entries)
+    if (success) this.syncWidgetSnapshot()
+    return success
   }
 
   static getEntryById(entryId: number): AccountEntry | null {
@@ -61,37 +80,77 @@ export class AccountManager {
   static getStatsByLabel(period: StatsPeriod): AccountLabelStats[] {
     const entries = StorageUtils.getAccountEntries()
     const range = this.getPeriodRange(period)
+    return this.getStatsByLabelFromEntries(entries, range.start, range.end, 'all')
+  }
+
+  static getStatsByLabelAndType(period: StatsPeriod, type: 'expense' | 'income'): AccountLabelStats[] {
+    const entries = StorageUtils.getAccountEntries()
+    const range = this.getPeriodRange(period)
+    return this.getStatsByLabelFromEntries(entries, range.start, range.end, type)
+  }
+
+  static getStatsByLabelForDate(dayStart: number): AccountLabelStats[] {
+    const entries = StorageUtils.getAccountEntries()
+    const end = dayStart + 24 * 60 * 60 * 1000 - 1
+    return this.getStatsByLabelFromEntries(entries, dayStart, end, 'all')
+  }
+
+  static getOverview(period: StatsPeriod): AccountOverview {
+    const entries = StorageUtils.getAccountEntries()
+    const range = this.getPeriodRange(period)
+    return this.getOverviewByRange(entries, range.start, range.end)
+  }
+
+  static getOverviewByDate(dayStart: number): AccountOverview {
+    const entries = StorageUtils.getAccountEntries()
+    const end = dayStart + 24 * 60 * 60 * 1000 - 1
+    return this.getOverviewByRange(entries, dayStart, end)
+  }
+
+  private static getStatsByLabelFromEntries(
+    entries: AccountEntry[],
+    start: number,
+    end: number,
+    type: 'expense' | 'income' | 'all'
+  ): AccountLabelStats[] {
     const statsMap = new Map<number, AccountLabelStats>()
 
     entries.forEach(entry => {
-      if (entry.occurredAt < range.start || entry.occurredAt > range.end) {
+      if (entry.occurredAt < start || entry.occurredAt > end) {
         return
       }
 
-      const key = entry.labelId
-      const current = statsMap.get(key) || {
-        labelId: key,
-        count: 0,
-        totalAmount: 0
+      if (type !== 'all' && entry.type !== type) {
+        return
       }
 
-      current.count += 1
-      current.totalAmount += entry.amount
-      statsMap.set(key, current)
+      const labelIds = this.parseLabelIds(entry.labelIdList)
+      if (labelIds.length === 0) {
+        const current = statsMap.get(0) || { labelId: 0, count: 0, totalAmount: 0, type }
+        current.count += 1
+        current.totalAmount += entry.amount
+        statsMap.set(0, current)
+        return
+      }
+
+      labelIds.forEach(labelId => {
+        const current = statsMap.get(labelId) || { labelId, count: 0, totalAmount: 0, type }
+        current.count += 1
+        current.totalAmount += entry.amount
+        statsMap.set(labelId, current)
+      })
     })
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalAmount - a.totalAmount)
   }
 
-  static getOverview(period: StatsPeriod): { income: number, expense: number, count: number } {
-    const entries = StorageUtils.getAccountEntries()
-    const range = this.getPeriodRange(period)
+  private static getOverviewByRange(entries: AccountEntry[], start: number, end: number): AccountOverview {
     let income = 0
     let expense = 0
     let count = 0
 
     entries.forEach(entry => {
-      if (entry.occurredAt < range.start || entry.occurredAt > range.end) {
+      if (entry.occurredAt < start || entry.occurredAt > end) {
         return
       }
 
@@ -106,6 +165,14 @@ export class AccountManager {
     return { income, expense, count }
   }
 
+  private static parseLabelIds(labelIdList: string): number[] {
+    if (!labelIdList) return []
+    return labelIdList
+      .split(',')
+      .map(id => parseInt(id))
+      .filter(id => !Number.isNaN(id))
+  }
+
   private static getPeriodRange(period: StatsPeriod): { start: number, end: number } {
     const now = new Date()
     const current = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
@@ -114,11 +181,20 @@ export class AccountManager {
     if (period === 'week') {
       const dayOfWeek = now.getDay()
       const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-      const start = current - offset * 24 * 60 * 60 * 1000
-      return { start, end }
+      const weekStart = current - offset * 24 * 60 * 60 * 1000
+      return { start: weekStart, end }
     }
 
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-    return { start, end }
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return { start: monthStart, end }
+  }
+
+  private static syncWidgetSnapshot(): void {
+    const now = new Date()
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    saveWidgetSnapshot(JSON.stringify({
+      items: EventManager.getWidgetSnapshot(),
+      overview: this.getOverviewByDate(dayStart)
+    }))
   }
 }

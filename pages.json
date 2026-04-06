@@ -49,6 +49,12 @@
 			}
 		},
 		{
+			"path": "pages/my/account-chart",
+			"style": {
+				"navigationBarTitleText": "分类图表"
+			}
+		},
+		{
 			"path": "pages/label/index",
 			"style": {
 				"navigationBarTitleText": "标签管理"
@@ -83,16 +89,16 @@
 				"text": "事件"
 			},
 			{
-				"pagePath": "pages/calendar/index",
-				"iconPath": "static/tab-calendar.png",
-				"selectedIconPath": "static/tab-calendar-active.png",
-				"text": "日历"
-			},
-			{
 				"pagePath": "pages/account/index",
 				"iconPath": "static/tab-account.png",
 				"selectedIconPath": "static/tab-account-active.png",
 				"text": "记账"
+			},
+			{
+				"pagePath": "pages/calendar/index",
+				"iconPath": "static/tab-calendar.png",
+				"selectedIconPath": "static/tab-calendar-active.png",
+				"text": "日历"
 			},
 			{
 				"pagePath": "pages/my/index",

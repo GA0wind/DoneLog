@@ -38,6 +38,10 @@
 						<radio value="date" :checked="repeatType === 'date'" />
 						<text>自定义下次完成时间</text>
 					</label>
+					<label class="radio-item">
+						<radio value="single" :checked="repeatType === 'single'" />
+						<text>不重复</text>
+					</label>
 				</radio-group>
 			</view>
 
@@ -48,8 +52,9 @@
 					class="input" 
 					type="number" 
 					v-model="intervalDays" 
-					placeholder="请输入间隔天数" 
+					placeholder="0 表示明天，1 表示后天" 
 				/>
+				<text class="field-tip">按“中间空几天”计算：0 表示明天再次需要完成。</text>
 			</view>
 
 			<!-- 下次完成时间 -->
@@ -152,7 +157,7 @@
 	const eventName = ref('')
 	const selectedLabelIds = ref<number[]>([])
 	const labels = ref<Label[]>([])
-	const repeatType = ref<'interval' | 'date'>('interval')
+	const repeatType = ref<'interval' | 'date' | 'single'>('interval')
 	const intervalDays = ref('')
 	const nextDueDate = ref('')
 	const remark = ref('')
@@ -206,12 +211,14 @@
 			.filter(id => !Number.isNaN(id))
 		remark.value = event.remark || ''
 
-		if (event.intervalDays > 0) {
-			repeatType.value = 'interval'
-			intervalDays.value = String(event.intervalDays)
-		} else if (event.nextDueDate > 0) {
+		if (event.nextDueDate > 0) {
 			repeatType.value = 'date'
 			nextDueDate.value = formatDate(event.nextDueDate)
+		} else if (event.intervalDays >= 0) {
+			repeatType.value = 'interval'
+			intervalDays.value = String(event.intervalDays)
+		} else {
+			repeatType.value = 'single'
 		}
 	}
 
@@ -325,9 +332,9 @@
 
 		if (repeatType.value === 'interval') {
 			const interval = parseInt(intervalDays.value)
-			if (Number.isNaN(interval) || interval <= 0) {
+			if (Number.isNaN(interval) || interval < 0) {
 				uni.showToast({
-					title: '间隔天数必须大于 0',
+					title: '间隔天数不能小于 0',
 					icon: 'none'
 				})
 				return
@@ -354,10 +361,11 @@
 			id: eventId.value,
 			name: eventName.value,
 			labelIdList: selectedLabelIds.value.join(','),
-			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
+			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : (repeatType.value === 'single' ? -1 : 0),
 			nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
 			remark: remark.value,
 			isTerminated: currentEvent.value.isTerminated,
+			terminatedAt: currentEvent.value.terminatedAt,
 			createTime: currentEvent.value.createTime,
 			updateTime: currentEvent.value.updateTime
 		}
@@ -545,6 +553,13 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.field-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #8792a1;
+		margin-top: 8px;
 	}
 
 	.action-buttons {

@@ -1,0 +1,319 @@
+<template>
+	<scroll-view scroll-y class="container">
+		<view class="hero-card">
+			<text class="hero-kicker">记账图表</text>
+			<text class="hero-title">分类占比</text>
+			<text class="hero-desc">按支出或收入查看标签分类占比，并支持按周或按月切换。</text>
+		</view>
+
+		<view class="switch-row">
+			<view class="switch-group">
+				<view class="switch-pill" :class="{ active: chartType === 'expense' }" @click="setChartType('expense')">
+					<text class="switch-text">支出</text>
+				</view>
+				<view class="switch-pill" :class="{ active: chartType === 'income' }" @click="setChartType('income')">
+					<text class="switch-text">收入</text>
+				</view>
+			</view>
+			<view class="switch-group">
+				<view class="switch-pill" :class="{ active: period === 'week' }" @click="setPeriod('week')">
+					<text class="switch-text">按星期</text>
+				</view>
+				<view class="switch-pill" :class="{ active: period === 'month' }" @click="setPeriod('month')">
+					<text class="switch-text">按月份</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="chart-card">
+			<view class="chart-wrap">
+				<view class="pie-chart" :style="{ background: pieBackground }">
+					<view class="pie-hole">
+						<text class="pie-total">¥{{totalAmount.toFixed(2)}}</text>
+						<text class="pie-label">{{chartTypeText}}{{periodText}}</text>
+					</view>
+				</view>
+			</view>
+			<view class="empty-card" v-if="chartStats.length === 0">
+				<text>这个周期没有可展示的数据</text>
+			</view>
+			<view class="legend-list" v-else>
+				<view class="legend-item" v-for="item in chartStats" :key="`chart-${item.labelId}`">
+					<view class="legend-left">
+						<view class="legend-dot" :style="{ backgroundColor: item.color }"></view>
+						<view>
+							<text class="legend-name">{{item.name}}</text>
+							<text class="legend-meta">{{item.count}} 笔 · {{item.percentText}}</text>
+						</view>
+					</view>
+					<text class="legend-amount">¥{{item.totalAmount.toFixed(2)}}</text>
+				</view>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { AccountManager, AccountLabelStats, StatsPeriod } from '@/utils/accountManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { Label } from '@/utils/storage.uts'
+
+	type ChartType = 'expense' | 'income'
+	type ChartItem = {
+		labelId: number
+		name: string
+		color: string
+		count: number
+		totalAmount: number
+		percent: number
+		percentText: string
+	}
+
+	AccountManager.initIds()
+	LabelManager.initIds()
+
+	const period = ref<StatsPeriod>('week')
+	const chartType = ref<ChartType>('expense')
+	const labels = ref<Label[]>([])
+	const rawStats = ref<AccountLabelStats[]>([])
+
+	const periodText = computed(() => period.value === 'week' ? '本周' : '本月')
+	const chartTypeText = computed(() => chartType.value === 'expense' ? '支出' : '收入')
+	const totalAmount = computed(() => rawStats.value.reduce((sum, item) => sum + item.totalAmount, 0))
+
+	const chartStats = computed((): ChartItem[] => {
+		const total = totalAmount.value
+		return rawStats.value.map(item => {
+			const percent = total > 0 ? item.totalAmount / total : 0
+			return {
+				labelId: item.labelId,
+				name: getLabelName(item.labelId),
+				color: getLabelColor(item.labelId),
+				count: item.count,
+				totalAmount: item.totalAmount,
+				percent,
+				percentText: `${(percent * 100).toFixed(1)}%`
+			}
+		})
+	})
+
+	const pieBackground = computed(() => {
+		if (chartStats.value.length === 0) {
+			return 'linear-gradient(135deg, #f0e7dc, #e5d8c8)'
+		}
+
+		let current = 0
+		const segments: string[] = []
+		chartStats.value.forEach(item => {
+			const start = (current * 100).toFixed(2)
+			current += item.percent
+			const end = (current * 100).toFixed(2)
+			segments.push(`${item.color} ${start}% ${end}%`)
+		})
+
+		return `conic-gradient(${segments.join(', ')})`
+	})
+
+	const loadData = () => {
+		labels.value = LabelManager.getSortedLabels('account')
+		rawStats.value = AccountManager.getStatsByLabelAndType(period.value, chartType.value)
+	}
+
+	const setChartType = (value: ChartType) => {
+		chartType.value = value
+		loadData()
+	}
+
+	const setPeriod = (value: StatsPeriod) => {
+		period.value = value
+		loadData()
+	}
+
+	const getLabelName = (labelId: number): string => {
+		if (labelId === 0) return '未分类'
+		const label = labels.value.find(item => item.id === labelId)
+		return label?.name || '未知标签'
+	}
+
+	const getLabelColor = (labelId: number): string => {
+		if (labelId === 0) return '#B7A995'
+		const label = labels.value.find(item => item.id === labelId)
+		return label?.color || '#1F7A72'
+	}
+
+	onLoad((options: any) => {
+		if (options.period === 'month') {
+			period.value = 'month'
+		}
+		if (options.type === 'income') {
+			chartType.value = 'income'
+		}
+		loadData()
+	})
+
+	onShow(() => {
+		loadData()
+	})
+</script>
+
+<style>
+	.container {
+		min-height: 100vh;
+		background-color: #f4efe7;
+		padding: 16px;
+	}
+
+	.hero-card,
+	.chart-card {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+		margin-bottom: 14px;
+	}
+
+	.hero-kicker {
+		font-size: 12px;
+		color: #1f7a72;
+		margin-bottom: 8px;
+	}
+
+	.hero-title {
+		font-size: 24px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 8px;
+	}
+
+	.hero-desc {
+		font-size: 13px;
+		line-height: 1.6;
+		color: #75828d;
+	}
+
+	.switch-row {
+		margin-bottom: 14px;
+	}
+
+	.switch-group {
+		flex-direction: row;
+		background-color: #eadfd2;
+		border-radius: 24px;
+		padding: 4px;
+		margin-bottom: 10px;
+	}
+
+	.switch-pill {
+		flex: 1;
+		align-items: center;
+		padding: 10px 0;
+		border-radius: 20px;
+	}
+
+	.switch-pill.active {
+		background-color: #1f7a72;
+		box-shadow: 0 10px 20px rgba(31, 122, 114, 0.18);
+	}
+
+	.switch-text {
+		font-size: 14px;
+		font-weight: 600;
+		color: #41505c;
+	}
+
+	.switch-pill.active .switch-text {
+		color: #fff;
+	}
+
+	.chart-wrap {
+		align-items: center;
+		margin-bottom: 18px;
+	}
+
+	.pie-chart {
+		width: 220px;
+		height: 220px;
+		border-radius: 110px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.pie-hole {
+		width: 120px;
+		height: 120px;
+		border-radius: 60px;
+		background-color: #fffaf3;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.pie-total {
+		font-size: 20px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.pie-label {
+		font-size: 12px;
+		color: #75828d;
+	}
+
+	.legend-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #f1e7dd;
+	}
+
+	.legend-item:last-child {
+		border-bottom-width: 0;
+	}
+
+	.legend-left {
+		flex-direction: row;
+		align-items: center;
+		flex: 1;
+		padding-right: 12px;
+	}
+
+	.legend-dot {
+		width: 12px;
+		height: 12px;
+		border-radius: 6px;
+		margin-right: 10px;
+	}
+
+	.legend-name {
+		display: block;
+		font-size: 14px;
+		font-weight: 600;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.legend-meta {
+		font-size: 12px;
+		color: #75828d;
+	}
+
+	.legend-amount {
+		font-size: 14px;
+		font-weight: bold;
+		color: #24323a;
+	}
+
+	.empty-card {
+		background-color: #fffdf9;
+		border-radius: 18px;
+		padding: 20px;
+		align-items: center;
+		color: #8792a1;
+	}
+</style>

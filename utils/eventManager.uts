@@ -1,10 +1,19 @@
 import { StorageUtils, Event, CompletionRecord } from './storage.uts'
+import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
 export type StatsPeriod = 'week' | 'month'
 
 export type EventLabelStats = {
   labelId: number
   count: number
+}
+
+export type EventWidgetItem = {
+  id: number
+  name: string
+  statusText: string
+  tagText: string
+  priority: 'today' | 'overdue' | 'upcoming'
 }
 
 /**
@@ -14,11 +23,15 @@ export class EventManager {
   private static nextEventId: number = 1
   private static nextRecordId: number = 1
   private static readonly oneDay = 24 * 60 * 60 * 1000
+  private static readonly intervalSemanticsVersion = 1
 
   /**
    * 初始化ID
    */
   static initIds(): void {
+    this.migrateIntervalSemantics()
+    this.migrateTerminatedAt()
+
     const events = StorageUtils.getEvents()
     const records = StorageUtils.getCompletionRecords()
 
@@ -62,7 +75,16 @@ export class EventManager {
 
     if (event.intervalDays > 0) {
       const baseTime = lastCompleteDate || event.createTime
-      return this.getStartOfDay(baseTime) + event.intervalDays * this.oneDay
+      return this.getStartOfDay(baseTime) + (event.intervalDays + 1) * this.oneDay
+    }
+
+    if (event.intervalDays === 0) {
+      const baseTime = lastCompleteDate || event.createTime
+      return this.getStartOfDay(baseTime) + this.oneDay
+    }
+
+    if (event.intervalDays < 0 && !event.isTerminated) {
+      return this.getTodayStart()
     }
 
     return null
@@ -160,19 +182,92 @@ export class EventManager {
     })
   }
 
+  static getWidgetSnapshot(limit: number = 4): EventWidgetItem[] {
+    const events = this.getSortedEvents(false)
+    const records = StorageUtils.getCompletionRecords()
+    const items: EventWidgetItem[] = []
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i]
+      const lastRecord = records
+        .filter(r => r.eventId === event.id)
+        .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)[0]
+      if (this.isCompletedOnDate(event.id, Date.now())) {
+        continue
+      }
+      if (this.isFixedDateCompleted(event, lastRecord?.lastCompleteDate || null)) {
+        continue
+      }
+      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+
+      let statusText = ''
+      let tagText = ''
+      let priority: 'today' | 'overdue' | 'upcoming' = 'today'
+
+      if (daysUntilDue < 0) {
+        statusText = `已逾期 ${Math.abs(daysUntilDue)} 天`
+        tagText = '逾期'
+        priority = 'overdue'
+      } else if (daysUntilDue === 0) {
+        statusText = '今天要完成'
+        tagText = '今日'
+        priority = 'today'
+      } else {
+        statusText = `${daysUntilDue} 天后到期`
+        tagText = '待办'
+        priority = 'upcoming'
+      }
+
+      items.push({
+        id: event.id,
+        name: event.name,
+        statusText,
+        tagText,
+        priority
+      })
+
+      if (items.length >= limit) {
+        break
+      }
+    }
+
+    return items
+  }
+
+  static isCompletedOnDate(eventId: number, timestamp: number): boolean {
+    const targetDay = this.getStartOfDay(timestamp)
+    const records = this.getCompletionRecordsByEventId(eventId)
+    return records.some(record => this.getStartOfDay(record.lastCompleteDate) === targetDay)
+  }
+
   /**
    * 添加事件
    */
   static addEvent(event: Omit<Event, 'id' | 'createTime' | 'updateTime'>): boolean {
+    return this.addEventAndGetId(event) > 0
+  }
+
+  static addEventAndGetId(event: Omit<Event, 'id' | 'createTime' | 'updateTime'>): number {
     const events = StorageUtils.getEvents()
     const newEvent: Event = {
-      ...event,
+      name: event.name,
+      labelIdList: event.labelIdList,
+      intervalDays: event.intervalDays,
+      nextDueDate: event.nextDueDate,
+      remark: event.remark,
+      isTerminated: event.isTerminated,
+      terminatedAt: event.terminatedAt,
       id: this.nextEventId++,
       createTime: Date.now(),
       updateTime: Date.now()
     }
     events.push(newEvent)
-    return StorageUtils.saveEvents(events)
+    const success = StorageUtils.saveEvents(events)
+    if (success) {
+      this.syncWidgetSnapshot()
+      return newEvent.id
+    }
+    return 0
   }
 
   /**
@@ -185,7 +280,11 @@ export class EventManager {
 
     event.updateTime = Date.now()
     events[index] = event
-    return StorageUtils.saveEvents(events)
+    const success = StorageUtils.saveEvents(events)
+    if (success) {
+      this.syncWidgetSnapshot()
+    }
+    return success
   }
 
   /**
@@ -197,8 +296,13 @@ export class EventManager {
     if (index === -1) return false
 
     events[index].isTerminated = true
+    events[index].terminatedAt = Date.now()
     events[index].updateTime = Date.now()
-    return StorageUtils.saveEvents(events)
+    const success = StorageUtils.saveEvents(events)
+    if (success) {
+      this.syncWidgetSnapshot()
+    }
+    return success
   }
 
   /**
@@ -216,6 +320,9 @@ export class EventManager {
       StorageUtils.saveCompletionRecords(records)
     }
 
+    if (success) {
+      this.syncWidgetSnapshot()
+    }
     return success
   }
 
@@ -257,17 +364,18 @@ export class EventManager {
       createTime: Date.now()
     }
     records.push(newRecord)
-    return StorageUtils.saveCompletionRecords(records)
+    const success = StorageUtils.saveCompletionRecords(records)
+    if (success) {
+      this.syncWidgetSnapshot()
+    }
+    return success
   }
 
   /**
    * 获取事件的历史完成记录
    */
   static getEventHistory(eventId: number): CompletionRecord[] {
-    const records = StorageUtils.getCompletionRecords()
-    return records
-      .filter(r => r.eventId === eventId)
-      .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)
+    return this.getCompletionRecordsByEventId(eventId)
   }
 
   /**
@@ -317,6 +425,13 @@ export class EventManager {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   }
 
+  private static getCompletionRecordsByEventId(eventId: number): CompletionRecord[] {
+    const records = StorageUtils.getCompletionRecords()
+    return records
+      .filter(r => r.eventId === eventId)
+      .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)
+  }
+
   private static getStartOfDay(timestamp: number): number {
     const date = new Date(timestamp)
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
@@ -341,11 +456,69 @@ export class EventManager {
     if (period === 'week') {
       const dayOfWeek = now.getDay()
       const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-      const start = current - offset * this.oneDay
-      return { start, end }
+      const weekStart = current - offset * this.oneDay
+      return { start: weekStart, end }
     }
 
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-    return { start, end }
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return { start: monthStart, end }
+  }
+
+  private static migrateIntervalSemantics(): void {
+    const meta = StorageUtils.getAppMeta()
+    if (meta.intervalSemanticsVersion >= this.intervalSemanticsVersion) {
+      return
+    }
+
+    const events = StorageUtils.getEvents()
+    let changed = false
+    const migratedEvents = events.map(event => {
+      if (event.intervalDays > 0) {
+        changed = true
+        return {
+          ...event,
+          intervalDays: event.intervalDays - 1
+        }
+      }
+      return event
+    })
+
+    if (!changed || StorageUtils.saveEvents(migratedEvents)) {
+      StorageUtils.saveAppMeta({
+        intervalSemanticsVersion: this.intervalSemanticsVersion
+      })
+      this.syncWidgetSnapshot()
+    }
+  }
+
+  private static migrateTerminatedAt(): void {
+    const events = StorageUtils.getEvents()
+    let changed = false
+    const migratedEvents = events.map(event => {
+      const terminatedAt = (event as any).terminatedAt
+      if (terminatedAt == null) {
+        changed = true
+        return {
+          ...event,
+          terminatedAt: event.isTerminated ? event.updateTime : 0
+        }
+      }
+      return event
+    })
+
+    if (changed && StorageUtils.saveEvents(migratedEvents)) {
+      this.syncWidgetSnapshot()
+    }
+  }
+
+  private static syncWidgetSnapshot(): void {
+    saveWidgetSnapshot(JSON.stringify({
+      items: this.getWidgetSnapshot(),
+      overview: {
+        income: 0,
+        expense: 0,
+        count: 0
+      }
+    }))
   }
 }

@@ -2,6 +2,7 @@
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager } from '@/utils/accountManager.uts'
+	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0
@@ -13,10 +14,13 @@
 		EventManager.initIds()
 		LabelManager.initIds()
 		AccountManager.initIds()
+		saveTodayWidgetSnapshot()
 	})
 
 	onAppShow(() => {
 		console.log('App Show')
+		saveTodayWidgetSnapshot()
+		handlePendingWidgetAction()
 	})
 
 	onAppHide(() => {
@@ -45,6 +49,52 @@
 		console.log('App Exit')
 	})
 	// #endif
+
+	const handlePendingWidgetAction = () => {
+		const payload = consumePendingWidgetAction()
+		if (!payload) {
+			return
+		}
+
+		try {
+			const action = JSON.parse(payload)
+			if (action && action.type === 'open-complete' && action.eventId) {
+				const event = EventManager.getEventById(action.eventId)
+				if (!event) {
+					return
+				}
+				if (event.nextDueDate > 0) {
+					uni.navigateTo({
+						url: `/pages/event/complete?id=${action.eventId}&entry=widget`
+					})
+					return
+				}
+				const success = EventManager.markEventComplete(action.eventId)
+				if (!success) {
+					return
+				}
+				if (event.intervalDays < 0) {
+					EventManager.terminateEvent(action.eventId)
+				}
+				saveTodayWidgetSnapshot()
+				uni.showToast({
+					title: '已完成',
+					icon: 'success'
+				})
+			}
+		} catch (e) {
+			console.error('处理桌面组件动作失败', e)
+		}
+	}
+
+	const saveTodayWidgetSnapshot = () => {
+		const now = new Date()
+		const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+		saveWidgetSnapshot(JSON.stringify({
+			items: EventManager.getWidgetSnapshot(),
+			overview: AccountManager.getOverviewByDate(dayStart)
+		}))
+	}
 </script>
 
 <style>
