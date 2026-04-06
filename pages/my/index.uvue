@@ -8,16 +8,18 @@
 
 		<view class="period-switch">
 			<view class="period-pill" :class="{ active: period === 'week' }" @click="setPeriod('week')">
+				<text class="period-kicker">周期</text>
 				<text class="period-text">按星期</text>
 			</view>
 			<view class="period-pill" :class="{ active: period === 'month' }" @click="setPeriod('month')">
+				<text class="period-kicker">周期</text>
 				<text class="period-text">按月份</text>
 			</view>
 		</view>
 
 		<view class="section-card">
 			<view class="section-header">
-				<view>
+				<view class="section-heading">
 					<text class="section-title">事件管理</text>
 					<text class="section-desc">查看完成数，并维护事件标签和排序。</text>
 				</view>
@@ -49,11 +51,14 @@
 
 		<view class="section-card">
 			<view class="section-header">
-				<view>
+				<view class="section-heading">
 					<text class="section-title">记账管理</text>
-					<text class="section-desc">分别管理记账标签，并查看收支概况与分类统计。</text>
+					<text class="section-desc">管理记账标签，并查看收支概况与分类统计。</text>
 				</view>
-				<button class="link-btn" @click="goToLabels('account')">标签管理</button>
+				<view class="header-actions">
+					<button class="ghost-link-btn" @click="goToAccountChart">分类图表</button>
+					<button class="link-btn" @click="goToLabels('account')">标签管理</button>
+				</view>
 			</view>
 			<view class="summary-row">
 				<view class="summary-item">
@@ -85,14 +90,48 @@
 				<text>这个周期还没有记账数据</text>
 			</view>
 		</view>
+
+		<view class="section-card">
+			<view class="widget-header">
+				<view class="widget-heading">
+					<text class="section-title">事件桌面组件预览</text>
+					<text class="section-desc">先用应用内预览桌面组件样式，后续可直接复用到原生小组件。</text>
+				</view>
+				<text class="widget-badge">Preview</text>
+			</view>
+			<view class="widget-preview">
+				<text class="widget-title">DoneLog 今日事件</text>
+				<text class="widget-meta">{{widgetSummary}}</text>
+				<view class="widget-overview">
+					<text class="widget-overview-text">支出 ¥{{todayWidgetOverview.expense.toFixed(2)}}</text>
+					<text class="widget-overview-text">收入 ¥{{todayWidgetOverview.income.toFixed(2)}}</text>
+				</view>
+				<view class="widget-list" v-if="widgetEvents.length > 0">
+					<view class="widget-item" v-for="item in widgetEvents" :key="`widget-${item.id}`">
+						<view class="widget-item-main">
+							<text class="widget-item-name">{{item.name}}</text>
+							<text class="widget-item-desc">{{item.statusText}}</text>
+						</view>
+						<text class="widget-item-tag" :class="item.priority">{{item.tagText}}</text>
+					</view>
+				</view>
+				<view class="empty-card widget-empty" v-else>
+					<text>今天没有待处理事件</text>
+				</view>
+			</view>
+		</view>
 	</scroll-view>
 </template>
 
 <script setup lang="uts">
-	import { EventManager, EventLabelStats, StatsPeriod } from '@/utils/eventManager.uts'
+	import { EventManager, EventLabelStats, EventWidgetItem, StatsPeriod } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager, AccountLabelStats } from '@/utils/accountManager.uts'
 	import { Label } from '@/utils/storage.uts'
+
+	EventManager.initIds()
+	LabelManager.initIds()
+	AccountManager.initIds()
 
 	const period = ref<StatsPeriod>('week')
 	const eventLabels = ref<Label[]>([])
@@ -100,9 +139,17 @@
 	const eventStats = ref<EventLabelStats[]>([])
 	const accountStats = ref<AccountLabelStats[]>([])
 	const accountOverview = ref({ income: 0, expense: 0, count: 0 })
+	const todayWidgetOverview = ref({ income: 0, expense: 0, count: 0 })
+	const widgetEvents = ref<EventWidgetItem[]>([])
 
 	const periodText = computed(() => period.value === 'week' ? '本周' : '本月')
 	const eventTotalCount = computed(() => eventStats.value.reduce((sum, item) => sum + item.count, 0))
+	const widgetSummary = computed(() => {
+		if (widgetEvents.value.length === 0) {
+			return '今天暂无待处理事件'
+		}
+		return `优先显示 ${widgetEvents.value.length} 条待处理事件`
+	})
 
 	const loadData = () => {
 		eventLabels.value = LabelManager.getSortedLabels('event')
@@ -110,6 +157,8 @@
 		eventStats.value = EventManager.getCompletionStatsByLabel(period.value)
 		accountStats.value = AccountManager.getStatsByLabel(period.value)
 		accountOverview.value = AccountManager.getOverview(period.value)
+		todayWidgetOverview.value = AccountManager.getOverviewByDate(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime())
+		widgetEvents.value = EventManager.getWidgetSnapshot()
 	}
 
 	const setPeriod = (value: StatsPeriod) => {
@@ -147,7 +196,17 @@
 		})
 	}
 
+	const goToAccountChart = () => {
+		uni.navigateTo({
+			url: `/pages/my/account-chart?period=${period.value}`
+		})
+	}
+
 	onShow(() => {
+		loadData()
+	})
+
+	onLoad(() => {
 		loadData()
 	})
 </script>
@@ -193,16 +252,23 @@
 
 	.period-switch {
 		flex-direction: row;
+		background-color: #eadfd2;
+		border-radius: 24px;
+		padding: 4px;
 		margin-bottom: 14px;
+		box-shadow: 0 10px 20px rgba(120, 101, 82, 0.08);
 	}
 
 	.period-pill {
 		flex: 1;
-		background-color: #f0e7dc;
-		padding: 10px 0;
-		border-radius: 999px;
+		background-color: #f7efe6;
+		padding: 10px 0 12px;
+		border-radius: 20px;
 		align-items: center;
 		margin-right: 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #e3d7ca;
 	}
 
 	.period-pill:last-child {
@@ -211,13 +277,24 @@
 
 	.period-pill.active {
 		background-color: #1f7a72;
+		border-color: #1f7a72;
+		box-shadow: 0 10px 20px rgba(31, 122, 114, 0.18);
+	}
+
+	.period-kicker {
+		font-size: 10px;
+		letter-spacing: 1px;
+		color: #9a8b7c;
+		margin-bottom: 4px;
 	}
 
 	.period-text {
-		font-size: 14px;
-		color: #53616d;
+		font-size: 15px;
+		font-weight: 600;
+		color: #41505c;
 	}
 
+	.period-pill.active .period-kicker,
 	.period-pill.active .period-text {
 		color: #fff;
 	}
@@ -225,8 +302,14 @@
 	.section-header {
 		flex-direction: row;
 		justify-content: space-between;
-		align-items: center;
+		align-items: flex-start;
 		margin-bottom: 14px;
+	}
+
+	.section-heading,
+	.widget-heading {
+		flex: 1;
+		padding-right: 12px;
 	}
 
 	.section-title {
@@ -245,19 +328,40 @@
 		height: 34px;
 		line-height: 34px;
 		border-radius: 999px;
+		flex-shrink: 0;
+	}
+
+	.header-actions {
+		flex-direction: row;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.ghost-link-btn {
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		font-size: 13px;
+		padding: 0 14px;
+		height: 34px;
+		line-height: 34px;
+		border-radius: 999px;
+		margin-right: 8px;
 	}
 
 	.summary-row {
 		flex-direction: row;
+		flex-wrap: wrap;
 		margin-bottom: 14px;
 	}
 
 	.summary-item {
 		flex: 1;
+		min-width: 140px;
 		background-color: #fffdf9;
 		border-radius: 18px;
 		padding: 14px 12px;
 		margin-right: 8px;
+		margin-bottom: 8px;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
@@ -330,5 +434,111 @@
 		padding: 20px;
 		align-items: center;
 		color: #8792a1;
+	}
+
+	.widget-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 14px;
+	}
+
+	.widget-badge {
+		background-color: #f3dfcf;
+		color: #b46443;
+		font-size: 11px;
+		font-weight: bold;
+		padding: 5px 10px;
+		border-radius: 999px;
+	}
+
+	.widget-preview {
+		background: linear-gradient(135deg, #24323a, #314651);
+		border-radius: 24px;
+		padding: 16px;
+		box-shadow: 0 16px 28px rgba(36, 50, 58, 0.18);
+	}
+
+	.widget-title {
+		display: block;
+		font-size: 18px;
+		font-weight: bold;
+		color: #fff9f2;
+		margin-bottom: 4px;
+	}
+
+	.widget-meta {
+		display: block;
+		font-size: 12px;
+		color: #c7d3da;
+		margin-bottom: 14px;
+	}
+
+	.widget-overview {
+		flex-direction: row;
+		margin-bottom: 12px;
+	}
+
+	.widget-overview-text {
+		font-size: 12px;
+		color: #fff3ea;
+		margin-right: 14px;
+	}
+
+	.widget-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		background-color: rgba(255, 255, 255, 0.08);
+		border-radius: 16px;
+		padding: 12px;
+		margin-bottom: 10px;
+	}
+
+	.widget-item:last-child {
+		margin-bottom: 0;
+	}
+
+	.widget-item-main {
+		flex: 1;
+		padding-right: 12px;
+	}
+
+	.widget-item-name {
+		display: block;
+		font-size: 14px;
+		font-weight: 600;
+		color: #fff;
+		margin-bottom: 4px;
+	}
+
+	.widget-item-desc {
+		font-size: 12px;
+		color: #c7d3da;
+	}
+
+	.widget-item-tag {
+		font-size: 11px;
+		font-weight: bold;
+		padding: 5px 10px;
+		border-radius: 999px;
+		color: #fff;
+	}
+
+	.widget-item-tag.today {
+		background-color: #e07a5f;
+	}
+
+	.widget-item-tag.overdue {
+		background-color: #c45d42;
+	}
+
+	.widget-item-tag.upcoming {
+		background-color: #1f7a72;
+	}
+
+	.widget-empty {
+		background-color: rgba(255, 255, 255, 0.08);
+		color: #dce5ea;
 	}
 </style>

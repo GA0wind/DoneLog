@@ -9,6 +9,7 @@ export class StorageUtils {
   static readonly ACCOUNT_LABELS_KEY = 'donelog_account_labels'
   static readonly ACCOUNT_ENTRIES_KEY = 'donelog_account_entries'
   static readonly LEGACY_LABELS_KEY = 'donelog_labels'
+  static readonly APP_META_KEY = 'donelog_app_meta'
 
   /**
    * 获取所有事件
@@ -16,7 +17,11 @@ export class StorageUtils {
   static getEvents(): Event[] {
     try {
       const data = uni.getStorageSync(this.EVENTS_KEY)
-      return data ? JSON.parse(data) : []
+      if (!data) {
+        return []
+      }
+      const parsed = JSON.parse(data)
+      return Array.isArray(parsed) ? parsed as Event[] : []
     } catch (e) {
       console.error('获取事件列表失败', e)
       return []
@@ -42,7 +47,11 @@ export class StorageUtils {
   static getCompletionRecords(): CompletionRecord[] {
     try {
       const data = uni.getStorageSync(this.COMPLETION_RECORDS_KEY)
-      return data ? JSON.parse(data) : []
+      if (!data) {
+        return []
+      }
+      const parsed = JSON.parse(data)
+      return Array.isArray(parsed) ? parsed as CompletionRecord[] : []
     } catch (e) {
       console.error('获取完成记录失败', e)
       return []
@@ -69,11 +78,13 @@ export class StorageUtils {
     try {
       const data = uni.getStorageSync(this.EVENT_LABELS_KEY)
       if (data) {
-        return JSON.parse(data)
+        const parsed = JSON.parse(data)
+        return Array.isArray(parsed) ? parsed as Label[] : []
       }
 
       const legacyData = uni.getStorageSync(this.LEGACY_LABELS_KEY)
-      const labels = legacyData ? JSON.parse(legacyData) : []
+      const parsedLegacy = legacyData ? JSON.parse(legacyData) : []
+      const labels: Label[] = Array.isArray(parsedLegacy) ? parsedLegacy as Label[] : []
       if (labels.length > 0) {
         uni.setStorageSync(this.EVENT_LABELS_KEY, JSON.stringify(labels))
       }
@@ -103,7 +114,11 @@ export class StorageUtils {
   static getAccountLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_LABELS_KEY)
-      return data ? JSON.parse(data) : []
+      if (!data) {
+        return []
+      }
+      const parsed = JSON.parse(data)
+      return Array.isArray(parsed) ? parsed as Label[] : []
     } catch (e) {
       console.error('获取记账标签列表失败', e)
       return []
@@ -129,7 +144,14 @@ export class StorageUtils {
   static getAccountEntries(): AccountEntry[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_ENTRIES_KEY)
-      return data ? JSON.parse(data) : []
+      const parsed = data ? JSON.parse(data) : []
+      const entries: any[] = Array.isArray(parsed) ? parsed : []
+      return entries.map((entry: any) => ({
+        ...entry,
+        labelIdList: entry.labelIdList != null
+          ? entry.labelIdList
+          : (entry.labelId != null && entry.labelId > 0 ? String(entry.labelId) : '')
+      }))
     } catch (e) {
       console.error('获取记账记录失败', e)
       return []
@@ -148,6 +170,33 @@ export class StorageUtils {
       return false
     }
   }
+
+  static getAppMeta(): AppMeta {
+    try {
+      const data = uni.getStorageSync(this.APP_META_KEY)
+      if (!data) {
+        return { intervalSemanticsVersion: 0 }
+      }
+      const parsed = JSON.parse(data)
+      if (parsed && parsed.intervalSemanticsVersion != null) {
+        return parsed as AppMeta
+      }
+      return { intervalSemanticsVersion: 0 }
+    } catch (e) {
+      console.error('获取应用元数据失败', e)
+      return { intervalSemanticsVersion: 0 }
+    }
+  }
+
+  static saveAppMeta(meta: AppMeta): boolean {
+    try {
+      uni.setStorageSync(this.APP_META_KEY, JSON.stringify(meta))
+      return true
+    } catch (e) {
+      console.error('保存应用元数据失败', e)
+      return false
+    }
+  }
 }
 
 /**
@@ -161,6 +210,7 @@ export type Event = {
   nextDueDate: number
   remark: string
   isTerminated: boolean
+  terminatedAt: number
   createTime: number
   updateTime: number
 }
@@ -192,9 +242,13 @@ export type AccountEntry = {
   id: number
   type: 'expense' | 'income'
   amount: number
-  labelId: number
+  labelIdList: string
   remark: string
   occurredAt: number
   createTime: number
   updateTime: number
+}
+
+export type AppMeta = {
+  intervalSemanticsVersion: number
 }

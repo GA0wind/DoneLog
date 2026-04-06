@@ -21,9 +21,13 @@
 			</view>
 
 			<view class="event-details">
-				<view class="detail-item" v-if="event?.intervalDays > 0">
+				<view class="detail-item" v-if="event?.intervalDays >= 0 && event?.nextDueDate <= 0">
 					<text class="detail-label">间隔天数：</text>
 					<text class="detail-value">{{event?.intervalDays}} 天</text>
+				</view>
+				<view class="detail-item" v-if="event?.intervalDays < 0 && event?.nextDueDate <= 0">
+					<text class="detail-label">重复方式：</text>
+					<text class="detail-value">不重复，每天提醒直到完成</text>
 				</view>
 				<view class="detail-item" v-if="event?.nextDueDate > 0">
 					<text class="detail-label">下次完成时间：</text>
@@ -90,12 +94,14 @@
 
 	const canComplete = computed(() => {
 		if (!event.value || event.value.isTerminated) return false
+		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return false
 		return !EventManager.isFixedDateCompleted(event.value, historyRecords.value[0]?.lastCompleteDate || null)
 	})
 
 	const statusText = computed(() => {
 		if (!event.value) return ''
 		if (event.value.isTerminated) return '已终止'
+		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return '已完成'
 
 		const lastRecord = historyRecords.value[0]
 		if (EventManager.isFixedDateCompleted(event.value, lastRecord?.lastCompleteDate || null)) {
@@ -174,7 +180,8 @@
 
 	// 标记完成
 	const markComplete = () => {
-		if (event.value?.nextDueDate && event.value.nextDueDate > 0) {
+		if (!event.value) return
+		if (event.value.nextDueDate > 0) {
 			uni.navigateTo({
 				url: `/pages/event/complete?id=${eventId.value}`
 			})
@@ -182,19 +189,22 @@
 		}
 
 		const success = EventManager.markEventComplete(eventId.value)
-		if (success) {
+		if (!success) {
 			uni.showToast({
-				title: '已完成',
-				icon: 'success'
+				title: '今天已完成过或事件不可操作',
+				icon: 'none'
 			})
-			loadEventData()
 			return
 		}
 
+		if (event.value.intervalDays < 0) {
+			EventManager.terminateEvent(eventId.value)
+		}
 		uni.showToast({
-			title: '今天已完成过或事件不可操作',
-			icon: 'none'
+			title: '已完成',
+			icon: 'success'
 		})
+		loadEventData()
 	}
 
 	// 加载事件数据

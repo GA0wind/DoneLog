@@ -10,19 +10,22 @@
 			<!-- 标签选择 -->
 			<view class="form-item">
 				<text class="label">选择标签</text>
-				<view class="tag-selector" @click="showLabelModal">
-					<view class="selected-tags">
-						<text 
-							class="tag" 
-							v-for="labelId in selectedLabelIds" 
-							:key="labelId"
-							:style="{ backgroundColor: getLabelColor(labelId) }"
-						>
-							{{getLabelName(labelId)}}
-						</text>
-						<text class="placeholder" v-if="selectedLabelIds.length === 0">请选择标签</text>
+				<view class="label-row">
+					<view class="tag-selector" @click="showLabelModal">
+						<view class="selected-tags">
+							<text 
+								class="tag" 
+								v-for="labelId in selectedLabelIds" 
+								:key="labelId"
+								:style="{ backgroundColor: getLabelColor(labelId) }"
+							>
+								{{getLabelName(labelId)}}
+							</text>
+							<text class="placeholder" v-if="selectedLabelIds.length === 0">请选择标签</text>
+						</view>
+						<text class="arrow">▼</text>
 					</view>
-					<text class="arrow">▼</text>
+					<button class="mini-add-btn" @click="openAddLabelModal">新增标签</button>
 				</view>
 			</view>
 
@@ -38,6 +41,10 @@
 						<radio value="date" :checked="repeatType === 'date'" />
 						<text>自定义下次完成时间</text>
 					</label>
+					<label class="radio-item">
+						<radio value="single" :checked="repeatType === 'single'" />
+						<text>不重复</text>
+					</label>
 				</radio-group>
 			</view>
 
@@ -48,8 +55,9 @@
 					class="input" 
 					type="number" 
 					v-model="intervalDays" 
-					placeholder="请输入间隔天数" 
+					placeholder="0 表示明天，1 表示后天" 
 				/>
+				<text class="field-tip">按“中间空几天”计算：0 表示明天再次需要完成。</text>
 			</view>
 
 			<!-- 下次完成时间 -->
@@ -60,6 +68,15 @@
 						<text>{{nextDueDate || '请选择日期'}}</text>
 					</view>
 				</picker>
+			</view>
+
+			<view class="form-item">
+				<text class="label">创建时状态</text>
+				<label class="switch-row">
+					<switch :checked="isCompletedToday" color="#1F7A72" @change="onCompletedTodayChange" />
+					<text class="switch-text">今天已经完成过</text>
+				</label>
+				<text class="field-tip" v-if="isCompletedToday">保存后会自动生成今天的完成记录；不重复事项会直接终止。</text>
 			</view>
 
 			<!-- 备注 -->
@@ -74,40 +91,35 @@
 
 		<!-- 标签选择弹窗 -->
 		<view class="modal" v-if="showLabelSelector" @click="hideLabelModal">
-			<view class="modal-content" @click.stop>
-				<view class="modal-header">
-					<text class="modal-title">选择标签</text>
-				</view>
-				<scroll-view scroll-y class="modal-body">
-					<view class="label-list">
-						<view 
-							class="label-item" 
-							v-for="label in labels" 
-							:key="label.id"
-							:class="{ 'selected': selectedLabelIds.includes(label.id) }"
-							@click="toggleLabel(label.id)"
-						>
-							<view class="label-info">
-								<view class="label-color" :style="{ backgroundColor: label.color }"></view>
-								<text class="label-name">{{label.name}}</text>
-							</view>
-							<text class="check-icon" v-if="selectedLabelIds.includes(label.id)">✓</text>
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">选择标签</text>
+				<scroll-view scroll-y class="selector-body">
+					<view
+						class="selector-item"
+						:class="{ selected: selectedLabelIds.includes(label.id) }"
+						v-for="label in labels"
+						:key="label.id"
+						@click="toggleLabel(label.id)"
+					>
+						<view class="selector-left">
+							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>
+							<text class="selector-name">{{label.name}}</text>
+						</view>
+						<view class="selector-check-wrap">
+							<text class="selector-check" :class="{ visible: selectedLabelIds.includes(label.id) }">✓</text>
 						</view>
 					</view>
 				</scroll-view>
 				<view class="modal-footer">
-					<button class="add-label-btn" @click="showAddLabel">新增标签</button>
-					<button class="confirm-btn" @click="confirmLabels">确定</button>
+					<button class="confirm-btn single-btn" @click="confirmLabels">确定</button>
 				</view>
 			</view>
 		</view>
 
 		<!-- 新增标签弹窗 -->
 		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
-			<view class="modal-content" @click.stop>
-				<view class="modal-header">
-					<text class="modal-title">新增标签</text>
-				</view>
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">新增标签</text>
 				<view class="modal-body">
 					<view class="form-item">
 						<text class="label">标签名称</text>
@@ -124,7 +136,7 @@
 								:style="{ backgroundColor: color }"
 								@click="newLabelColor = color"
 							>
-								<text v-if="newLabelColor === color" class="check-icon">✓</text>
+								<text v-if="newLabelColor === color" class="color-check-icon">✓</text>
 							</view>
 						</view>
 					</view>
@@ -147,10 +159,11 @@
 	const eventName = ref('')
 	const selectedLabelIds = ref<number[]>([])
 	const labels = ref<Label[]>([])
-	const repeatType = ref<'interval' | 'date'>('interval')
+	const repeatType = ref<'interval' | 'date' | 'single'>('interval')
 	const intervalDays = ref('')
 	const nextDueDate = ref('')
 	const remark = ref('')
+	const isCompletedToday = ref(false)
 	const showLabelSelector = ref(false)
 	const showAddLabelModal = ref(false)
 	const newLabelName = ref('')
@@ -172,7 +185,7 @@
 
 	// 加载标签列表
 	const loadLabels = () => {
-		labels.value = LabelManager.getSortedLabels()
+		labels.value = LabelManager.getSortedLabels('event')
 	}
 
 	// 切换标签选择
@@ -201,7 +214,7 @@
 	}
 
 	// 显示新增标签弹窗
-	const showAddLabel = () => {
+	const openAddLabelModal = () => {
 		newLabelName.value = ''
 		newLabelColor.value = '#007AFF'
 		showAddLabelModal.value = true
@@ -214,7 +227,8 @@
 
 	// 新增标签
 	const addNewLabel = () => {
-		if (!newLabelName.value.trim()) {
+		const createdName = newLabelName.value.trim()
+		if (!createdName) {
 			uni.showToast({
 				title: '请输入标签名称',
 				icon: 'none'
@@ -222,14 +236,20 @@
 			return
 		}
 
-		const success = LabelManager.addLabel(newLabelName.value, newLabelColor.value)
+		const success = LabelManager.addLabel(createdName, newLabelColor.value, 'event')
 		if (success) {
+			newLabelName.value = ''
+			newLabelColor.value = '#007AFF'
 			uni.showToast({
 				title: '添加成功',
 				icon: 'success'
 			})
 			loadLabels()
-			hideAddLabelModal()
+			const created = labels.value.find(item => item.name === createdName)
+			if (created && !selectedLabelIds.value.includes(created.id)) {
+				selectedLabelIds.value.push(created.id)
+			}
+			showAddLabelModal.value = false
 		} else {
 			uni.showToast({
 				title: '添加失败或名称重复',
@@ -260,6 +280,10 @@
 		nextDueDate.value = e.detail.value
 	}
 
+	const onCompletedTodayChange = (e: any) => {
+		isCompletedToday.value = e.detail.value
+	}
+
 	// 保存事件
 	const saveEvent = () => {
 		if (!eventName.value.trim()) {
@@ -280,9 +304,9 @@
 
 		if (repeatType.value === 'interval') {
 			const interval = parseInt(intervalDays.value)
-			if (Number.isNaN(interval) || interval <= 0) {
+			if (Number.isNaN(interval) || interval < 0) {
 				uni.showToast({
-					title: '间隔天数必须大于 0',
+					title: '间隔天数不能小于 0',
 					icon: 'none'
 				})
 				return
@@ -300,14 +324,21 @@
 		const event: Omit<Event, 'id' | 'createTime' | 'updateTime'> = {
 			name: eventName.value,
 			labelIdList: selectedLabelIds.value.join(','),
-			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
+			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : (repeatType.value === 'single' ? -1 : 0),
 			nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
 			remark: remark.value,
-			isTerminated: false
+			isTerminated: false,
+			terminatedAt: 0
 		}
 
-		const success = EventManager.addEvent(event)
-		if (success) {
+		const eventId = EventManager.addEventAndGetId(event)
+		if (eventId > 0) {
+			if (isCompletedToday.value) {
+				EventManager.markEventComplete(eventId)
+				if (repeatType.value === 'single') {
+					EventManager.terminateEvent(eventId)
+				}
+			}
 			uni.showToast({
 				title: '保存成功',
 				icon: 'success'
@@ -325,6 +356,7 @@
 
 	// 页面加载时获取标签
 	onLoad(() => {
+		LabelManager.initIds()
 		loadLabels()
 	})
 </script>
@@ -376,7 +408,14 @@
 		flex-wrap: wrap;
 	}
 
+	.label-row {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
 	.tag-selector {
+		flex: 1;
+		margin-right: 10px;
 		min-height: 44px;
 		background-color: #fffdf9;
 		border-radius: 16px;
@@ -394,15 +433,17 @@
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
+		max-height: 52px;
+		overflow: hidden;
 	}
 
 	.tag {
 		font-size: 12px;
 		color: #fff;
-		padding: 2px 8px;
-		border-radius: 10px;
-		margin-right: 5px;
-		margin-bottom: 5px;
+		padding: 4px 10px;
+		border-radius: 999px;
+		margin-right: 6px;
+		margin-bottom: 6px;
 	}
 
 	.placeholder {
@@ -414,6 +455,17 @@
 		margin-left: 10px;
 		font-size: 12px;
 		color: #8792a1;
+	}
+
+	.mini-add-btn {
+		height: 44px;
+		line-height: 44px;
+		padding: 0 14px;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		font-size: 13px;
+		flex-shrink: 0;
 	}
 
 	.textarea {
@@ -440,6 +492,17 @@
 		font-size: 14px;
 	}
 
+	.switch-row {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.switch-text {
+		margin-left: 10px;
+		font-size: 14px;
+		color: #24323a;
+	}
+
 	.picker {
 		height: 44px;
 		background-color: #fffdf9;
@@ -450,6 +513,13 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.field-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #8792a1;
+		margin-top: 8px;
 	}
 
 	.save-btn {
@@ -479,104 +549,133 @@
 	.modal-content {
 		background-color: #fffaf3;
 		border-radius: 22px;
-		width: 85%;
-		max-height: 70vh;
+		width: 88%;
+		max-height: 78vh;
+		padding: 18px;
 	}
 
-	.modal-header {
-		padding: 15px;
-		border-bottom: 1px solid #f0f0f0;
+	.selector-modal-content {
+		width: 88%;
+		max-height: 78vh;
+		padding: 18px;
 	}
 
 	.modal-title {
+		display: block;
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;
-		text-align: center;
+		margin-bottom: 12px;
+	}
+
+	.selector-body {
+		height: 420px;
+		margin-bottom: 12px;
+		padding-right: 8px;
 	}
 
 	.modal-body {
-		padding: 15px;
-		max-height: 400px;
+		padding: 0;
 	}
 
-	.label-list {
-		max-height: 300px;
-	}
-
-	.label-item {
+	.selector-item {
+		position: relative;
 		flex-direction: row;
-		justify-content: space-between;
 		align-items: center;
-		padding: 12px;
-		border-bottom: 1px solid #f5f5f5;
+		justify-content: space-between;
+		height: 52px;
+		padding: 0 40px 0 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: transparent;
+		border-radius: 16px;
+		margin-bottom: 8px;
+		background-color: #fffdf9;
+		box-sizing: border-box;
 	}
 
-	.label-item.selected {
+	.selector-item:active {
+		background-color: #f7f1e8;
+	}
+
+	.selector-item.selected {
 		background-color: #e8f4f2;
+		border-color: #d7ece8;
 	}
 
-	.label-info {
+	.selector-left {
 		flex-direction: row;
 		align-items: center;
 		flex: 1;
+		min-width: 0;
 	}
 
-	.label-color {
-		width: 20px;
-		height: 20px;
-		border-radius: 10px;
+	.selector-color {
+		width: 16px;
+		height: 16px;
+		border-radius: 8px;
 		margin-right: 10px;
 	}
 
-	.label-name {
-		font-size: 16px;
+	.selector-name {
+		font-size: 14px;
 		color: #24323a;
+		flex: 1;
+		lines: 1;
+		text-overflow: ellipsis;
 	}
 
-	.check-icon {
-		font-size: 20px;
+	.selector-check-wrap {
+		position: absolute;
+		right: 10px;
+		top: 0;
+		bottom: 0;
+		width: 24px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.selector-check {
+		width: 24px;
+		font-size: 18px;
 		color: #1f7a72;
-		font-weight: bold;
+		text-align: center;
+		opacity: 0;
+	}
+
+	.selector-check.visible {
+		opacity: 1;
 	}
 
 	.modal-footer {
 		flex-direction: row;
-		padding: 15px;
-		border-top: 1px solid #f0f0f0;
-	}
-
-	.add-label-btn {
-		flex: 1;
-		background-color: #f2ebe2;
-		color: #4d5b67;
-		height: 40px;
-		line-height: 40px;
-		border-radius: 20px;
-		font-size: 16px;
-		margin-right: 10px;
+		margin-top: 4px;
 	}
 
 	.cancel-btn {
 		flex: 1;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
 		background-color: #f2ebe2;
 		color: #4d5b67;
-		height: 40px;
-		line-height: 40px;
-		border-radius: 20px;
-		font-size: 16px;
 		margin-right: 10px;
 	}
 
 	.confirm-btn {
 		flex: 1;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
 		background-color: #1f7a72;
 		color: #fff;
-		height: 40px;
-		line-height: 40px;
-		border-radius: 20px;
-		font-size: 16px;
 		margin-left: 10px;
+	}
+
+	.single-btn {
+		margin-left: 0;
 	}
 
 	.color-options {
@@ -596,5 +695,11 @@
 
 	.color-option.selected {
 		box-shadow: 0 0 0 2px #fffaf3, 0 0 0 4px #1f7a72;
+	}
+
+	.color-check-icon {
+		font-size: 18px;
+		color: #fff;
+		font-weight: bold;
 	}
 </style>

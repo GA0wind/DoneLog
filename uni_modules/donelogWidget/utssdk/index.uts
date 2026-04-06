@@ -1,0 +1,26 @@
+// #ifdef APP-ANDROID
+import {
+	saveWidgetSnapshot as androidSaveWidgetSnapshot,
+	consumePendingWidgetAction as androidConsumePendingWidgetAction,
+	refreshWidget as androidRefreshWidget
+} from './app-android/index.uts'
+// #endif
+
+export function saveWidgetSnapshot(payload: string): void {
+	// #ifdef APP-ANDROID
+	androidSaveWidgetSnapshot(payload)
+	// #endif
+}
+
+export function consumePendingWidgetAction(): string {
+	// #ifdef APP-ANDROID
+	return androidConsumePendingWidgetAction()
+	// #endif
+	return ''
+}
+
+export function refreshWidget(): void {
+	// #ifdef APP-ANDROID
+	androidRefreshWidget()
+	// #endif
+}

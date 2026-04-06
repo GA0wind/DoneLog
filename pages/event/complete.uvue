@@ -3,7 +3,7 @@
 		<view class="hero-card">
 			<text class="hero-kicker">完成确认</text>
 			<text class="hero-title">{{event?.name}}</text>
-			<text class="hero-desc">这个事项使用的是指定日期模式。完成后，你可以选择终止，也可以继续安排下一次。</text>
+			<text class="hero-desc">{{heroDesc}}</text>
 		</view>
 
 		<view class="panel">
@@ -53,7 +53,8 @@
 
 				<view class="form-item" v-if="repeatType === 'interval'">
 					<text class="label">间隔天数</text>
-					<input class="input" type="number" v-model="intervalDays" placeholder="例如 7" />
+					<input class="input" type="number" v-model="intervalDays" placeholder="0 表示明天，1 表示后天" />
+					<text class="helper-text">按“中间空几天”计算：0 表示明天再次需要完成。</text>
 				</view>
 			</view>
 		</view>
@@ -75,6 +76,15 @@
 	const repeatType = ref<'date' | 'interval'>('date')
 	const nextDueDate = ref('')
 	const intervalDays = ref('')
+	const heroDesc = computed(() => {
+		if (!event.value) {
+			return ''
+		}
+		if (event.value.intervalDays >= 0 && event.value.nextDueDate === 0) {
+			return '这个事项使用的是间隔天数模式。完成后，你可以沿用当前周期，也可以直接改成新的周期。'
+		}
+		return '这个事项使用的是指定日期模式。完成后，你可以终止，也可以继续安排下一次。'
+	})
 
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
@@ -101,7 +111,7 @@
 		if (current.nextDueDate > 0) {
 			repeatType.value = 'date'
 			nextDueDate.value = formatDate(current.nextDueDate)
-		} else if (current.intervalDays > 0) {
+		} else {
 			repeatType.value = 'interval'
 			intervalDays.value = String(current.intervalDays)
 		}
@@ -137,9 +147,9 @@
 
 			if (repeatType.value === 'interval') {
 				const interval = parseInt(intervalDays.value)
-				if (Number.isNaN(interval) || interval <= 0) {
+				if (Number.isNaN(interval) || interval < 0) {
 					uni.showToast({
-						title: '间隔天数必须大于 0',
+						title: '间隔天数不能小于 0',
 						icon: 'none'
 					})
 					return
@@ -173,7 +183,8 @@
 				...event.value,
 				intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
 				nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
-				isTerminated: false
+				isTerminated: false,
+				terminatedAt: 0
 			}
 
 			const updateSuccess = EventManager.updateEvent(updatedEvent)
@@ -359,6 +370,13 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.helper-text {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #8792a1;
+		margin-top: 8px;
 	}
 
 	.footer-actions {

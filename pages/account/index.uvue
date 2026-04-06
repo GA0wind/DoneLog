@@ -22,8 +22,8 @@
 						<text class="entry-icon-text">{{entry.type === 'expense' ? '支' : '收'}}</text>
 					</view>
 					<view class="entry-info">
-						<text class="entry-label">{{getLabelName(entry.labelId)}}</text>
-						<text class="entry-remark">{{entry.remark || '无备注'}} · {{formatDate(entry.occurredAt)}}</text>
+						<text class="entry-desc">{{getEntryDisplayDesc(entry)}}</text>
+						<text class="entry-meta">{{getEntryLabelNames(entry)}} · {{formatDate(entry.occurredAt)}}</text>
 					</view>
 				</view>
 				<view class="entry-right">
@@ -40,12 +40,12 @@
 			<text class="add-icon">+</text>
 		</view>
 
-		<view class="modal" v-if="showModal" @click="hideModal">
+		<view class="modal" v-if="showModal && !showLabelSelector && !showAddLabelModal" @click="hideModal">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">{{editingId > 0 ? '编辑记账' : '新增记账'}}</text>
 				<view class="form-item">
 					<text class="label">收支类型</text>
-					<radio-group @change="onTypeChange">
+					<radio-group class="type-group" @change="onTypeChange">
 						<label class="radio-chip" :class="{ active: formType === 'expense' }">
 							<radio value="expense" :checked="formType === 'expense'" color="#E07A5F" />
 							<text>支出</text>
@@ -64,9 +64,17 @@
 
 				<view class="form-item">
 					<text class="label">标签</text>
-					<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
-						<view class="picker"><text>{{selectedLabelName}}</text></view>
-					</picker>
+					<view class="label-row">
+						<view class="tag-selector" @click="showLabelSelector = true">
+							<view class="selected-tags">
+								<text class="tag" v-for="labelId in formLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
+									{{getLabelName(labelId)}}
+								</text>
+								<text class="placeholder" v-if="formLabelIds.length === 0">请选择标签</text>
+							</view>
+						</view>
+						<button class="mini-add-btn" @click="showAddLabelModal = true">新增标签</button>
+					</view>
 				</view>
 
 				<view class="form-item">
@@ -77,13 +85,60 @@
 				</view>
 
 				<view class="form-item">
-					<text class="label">备注</text>
-					<textarea class="textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资" />
+					<text class="label">描述</text>
+					<textarea class="textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资、报销" />
 				</view>
 
 				<view class="modal-footer">
 					<button class="cancel-btn" @click="hideModal">取消</button>
 					<button class="confirm-btn" @click="saveEntry">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabel">
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">新增记账标签</text>
+				<view class="form-item">
+					<text class="label">标签名称</text>
+					<input class="input" v-model="newLabelName" placeholder="请输入标签名称" />
+				</view>
+				<view class="form-item">
+					<text class="label">标签颜色</text>
+					<view class="color-options">
+						<view
+							class="color-option"
+							v-for="color in colorOptions"
+							:key="color"
+							:class="{ selected: newLabelColor === color }"
+							:style="{ backgroundColor: color }"
+							@click="newLabelColor = color"
+						>
+							<text v-if="newLabelColor === color" class="color-check">✓</text>
+						</view>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click="hideAddLabel">取消</button>
+					<button class="confirm-btn" @click="addAccountLabel">确定</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showLabelSelector" @click="showLabelSelector = false">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">选择标签</text>
+				<scroll-view scroll-y class="selector-body">
+					<view class="selector-item" :class="{ selected: formLabelIds.includes(label.id) }" v-for="label in labels" :key="label.id" @click="toggleFormLabel(label.id)">
+						<view class="selector-left">
+							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>
+							<text class="selector-name">{{label.name}}</text>
+						</view>
+						<text class="selector-check" :class="{ visible: formLabelIds.includes(label.id) }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="confirm-btn" @click="showLabelSelector = false">确定</button>
 				</view>
 			</view>
 		</view>
@@ -97,21 +152,29 @@
 
 	const entries = ref<AccountEntry[]>([])
 	const labels = ref<Label[]>([])
-	const labelOptions = ref<Label[]>([{ id: 0, name: '未分类', color: '#B7A995', sortOrder: 0 }])
 	const monthOverview = ref({ income: 0, expense: 0, count: 0 })
 
 	const showModal = ref(false)
+	const showAddLabelModal = ref(false)
+	const showLabelSelector = ref(false)
 	const editingId = ref(0)
 	const formType = ref<'expense' | 'income'>('expense')
 	const formAmount = ref('')
-	const formLabelId = ref(0)
+	const formLabelIds = ref<number[]>([])
 	const formDate = ref('')
 	const formRemark = ref('')
-
-	const selectedLabelName = computed(() => {
-		const label = labelOptions.value.find(item => item.id === formLabelId.value)
-		return label?.name || '未分类'
-	})
+	const newLabelName = ref('')
+	const newLabelColor = ref('#1F7A72')
+	const colorOptions = [
+		'#1F7A72',
+		'#2A9D8F',
+		'#E07A5F',
+		'#E9C46A',
+		'#8AB17D',
+		'#5D7FA3',
+		'#B56576',
+		'#6D597A'
+	]
 
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
@@ -122,9 +185,9 @@
 	}
 
 	const loadData = () => {
+		LabelManager.initIds()
 		entries.value = AccountManager.getSortedEntries()
 		labels.value = LabelManager.getSortedLabels('account')
-		labelOptions.value = [{ id: 0, name: '未分类', color: '#B7A995', sortOrder: 0 }, ...labels.value]
 		monthOverview.value = AccountManager.getOverview('month')
 	}
 
@@ -132,13 +195,15 @@
 		editingId.value = 0
 		formType.value = 'expense'
 		formAmount.value = ''
-		formLabelId.value = 0
+		formLabelIds.value = []
 		formDate.value = formatDate(Date.now())
 		formRemark.value = ''
 	}
 
 	const openAddModal = () => {
 		resetForm()
+		showLabelSelector.value = false
+		showAddLabelModal.value = false
 		showModal.value = true
 	}
 
@@ -146,7 +211,7 @@
 		editingId.value = entry.id
 		formType.value = entry.type
 		formAmount.value = String(entry.amount)
-		formLabelId.value = entry.labelId
+		formLabelIds.value = parseLabelIds(entry.labelIdList)
 		formDate.value = formatDate(entry.occurredAt)
 		formRemark.value = entry.remark
 		showModal.value = true
@@ -154,18 +219,62 @@
 
 	const hideModal = () => {
 		showModal.value = false
+		showLabelSelector.value = false
+		showAddLabelModal.value = false
+	}
+
+	const hideAddLabel = () => {
+		showAddLabelModal.value = false
 	}
 
 	const onTypeChange = (e: any) => {
 		formType.value = e.detail.value
 	}
 
-	const onLabelChange = (e: any) => {
-		formLabelId.value = labelOptions.value[parseInt(e.detail.value)].id
-	}
-
 	const onDateChange = (e: any) => {
 		formDate.value = e.detail.value
+	}
+
+	const parseLabelIds = (labelIdList: string): number[] => {
+		if (!labelIdList) return []
+		return labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id))
+	}
+
+	const toggleFormLabel = (labelId: number) => {
+		const index = formLabelIds.value.indexOf(labelId)
+		if (index > -1) {
+			formLabelIds.value.splice(index, 1)
+		} else {
+			formLabelIds.value.push(labelId)
+		}
+	}
+
+	const addAccountLabel = () => {
+		if (!newLabelName.value.trim()) {
+			uni.showToast({ title: '请输入标签名称', icon: 'none' })
+			return
+		}
+
+		const success = LabelManager.addLabel(newLabelName.value, newLabelColor.value, 'account')
+		if (!success) {
+			uni.showToast({ title: '添加失败或名称重复', icon: 'none' })
+			return
+		}
+
+		labels.value = LabelManager.getSortedLabels('account')
+		const created = labels.value.find(item => item.name === newLabelName.value.trim())
+		if (created) {
+			if (!formLabelIds.value.includes(created.id)) {
+				formLabelIds.value.push(created.id)
+			}
+		}
+		newLabelName.value = ''
+		newLabelColor.value = '#1F7A72'
+		showAddLabelModal.value = false
+		uni.showToast({ title: '添加成功', icon: 'success' })
 	}
 
 	const saveEntry = () => {
@@ -178,7 +287,7 @@
 		const payload = {
 			type: formType.value,
 			amount: amount,
-			labelId: formLabelId.value,
+			labelIdList: formLabelIds.value.join(','),
 			remark: formRemark.value,
 			occurredAt: new Date(formDate.value).getTime()
 		}
@@ -217,9 +326,26 @@
 	}
 
 	const getLabelName = (labelId: number): string => {
-		if (labelId === 0) return '未分类'
 		const label = labels.value.find(item => item.id === labelId)
 		return label?.name || '未知标签'
+	}
+
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label?.color || '#B7A995'
+	}
+
+	const getEntryLabelNames = (entry: AccountEntry): string => {
+		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => !!name)
+		return names.length > 0 ? names.join(' / ') : '未分类'
+	}
+
+	const getEntryDisplayDesc = (entry: AccountEntry): string => {
+		if (entry.remark && entry.remark.trim()) {
+			return entry.remark
+		}
+		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => !!name)
+		return names.length > 0 ? names.join('，') : '无描述'
 	}
 
 	onShow(() => {
@@ -251,12 +377,14 @@
 
 	.summary-card {
 		flex-direction: row;
+		flex-wrap: wrap;
 		padding: 16px;
 		margin-bottom: 14px;
 	}
 
 	.summary-item {
 		flex: 1;
+		min-width: 30%;
 		padding: 10px;
 	}
 
@@ -280,7 +408,8 @@
 	.entry-item {
 		flex-direction: row;
 		justify-content: space-between;
-		align-items: center;
+		align-items: flex-start;
+		flex-wrap: wrap;
 		padding: 16px;
 		border-bottom-width: 1px;
 		border-bottom-style: solid;
@@ -297,8 +426,21 @@
 		align-items: center;
 	}
 
+	.entry-left {
+		flex: 1;
+		min-width: 0;
+		padding-right: 10px;
+	}
+
+	.entry-right {
+		margin-top: 8px;
+		margin-left: auto;
+	}
+
 	.entry-info {
 		margin-left: 10px;
+		flex: 1;
+		min-width: 0;
 	}
 
 	.entry-icon {
@@ -323,7 +465,7 @@
 		color: #24323a;
 	}
 
-	.entry-label {
+	.entry-desc {
 		display: block;
 		font-size: 15px;
 		font-weight: 600;
@@ -331,9 +473,10 @@
 		margin-bottom: 4px;
 	}
 
-	.entry-remark {
+	.entry-meta {
 		font-size: 12px;
 		color: #7b8791;
+		line-height: 1.5;
 	}
 
 	.entry-amount {
@@ -358,6 +501,55 @@
 		padding: 0 12px;
 		border-radius: 999px;
 		font-size: 12px;
+	}
+
+	.label-row {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.tag-selector {
+		flex: 1;
+		margin-right: 10px;
+		min-height: 44px;
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 8px 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.selected-tags {
+		flex-direction: row;
+		flex-wrap: wrap;
+		max-height: 52px;
+		overflow: hidden;
+	}
+
+	.tag {
+		font-size: 12px;
+		color: #fff;
+		padding: 4px 10px;
+		border-radius: 999px;
+		margin-right: 6px;
+		margin-bottom: 6px;
+	}
+
+	.placeholder {
+		font-size: 14px;
+		color: #98a2ad;
+	}
+
+	.mini-add-btn {
+		height: 44px;
+		line-height: 44px;
+		padding: 0 14px;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		font-size: 13px;
+		flex-shrink: 0;
 	}
 
 	.empty-tip {
@@ -397,6 +589,14 @@
 	}
 
 	.modal-content {
+		width: 88%;
+		max-height: 80vh;
+		padding: 18px;
+	}
+
+	.selector-modal-content {
+		width: 88%;
+		max-height: 78vh;
 		padding: 18px;
 	}
 
@@ -420,10 +620,11 @@
 	}
 
 	.radio-chip {
-		display: inline-flex;
+		flex: 1;
+		flex-direction: row;
 		align-items: center;
+		justify-content: center;
 		padding: 10px 14px;
-		margin-right: 10px;
 		background-color: #fffdf9;
 		border-radius: 999px;
 		border-width: 1px;
@@ -431,8 +632,18 @@
 		border-color: #eee2d7;
 	}
 
+	.type-group {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.type-group .radio-chip:first-child {
+		margin-right: 10px;
+	}
+
 	.radio-chip.active {
 		background-color: #f6eee4;
+		border-color: #dfc5b8;
 	}
 
 	.input,
@@ -455,6 +666,90 @@
 	.textarea {
 		min-height: 90px;
 		padding-top: 10px;
+	}
+
+	.color-options {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.color-option {
+		width: 34px;
+		height: 34px;
+		border-radius: 17px;
+		margin-right: 10px;
+		margin-bottom: 10px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.color-option.selected {
+		box-shadow: 0 0 0 2px #fffaf3, 0 0 0 4px #1f7a72;
+	}
+
+	.color-check {
+		color: #fff;
+		font-size: 16px;
+	}
+
+	.selector-body {
+		height: 420px;
+		margin-bottom: 12px;
+		padding-right: 8px;
+	}
+
+	.selector-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		height: 52px;
+		padding: 0 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: transparent;
+		border-radius: 16px;
+		margin-bottom: 8px;
+		background-color: #fffdf9;
+	}
+
+	.selector-item:active {
+		background-color: #f7f1e8;
+	}
+
+	.selector-item.selected {
+		background-color: #e8f4f2;
+		border-color: #d7ece8;
+	}
+
+	.selector-left {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.selector-color {
+		width: 16px;
+		height: 16px;
+		border-radius: 8px;
+		margin-right: 10px;
+	}
+
+	.selector-name {
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.selector-check {
+		width: 28px;
+		font-size: 18px;
+		color: #1f7a72;
+		text-align: center;
+		margin-right: 2px;
+		flex-shrink: 0;
+		opacity: 0;
+	}
+
+	.selector-check.visible {
+		opacity: 1;
 	}
 
 	.modal-footer {

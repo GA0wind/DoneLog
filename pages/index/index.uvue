@@ -28,28 +28,25 @@
 			>
 				<view class="event-header">
 					<text class="event-name">{{event.name}}</text>
-					<text class="event-days" :class="{ 'overdue-text': isOverdue(event) }">
+					<text class="event-days" :class="{ 'overdue-text': isOverdue(event), 'terminated-text': event.isTerminated }">
 						{{getDaysText(event)}}
 					</text>
 				</view>
-				<view class="event-remark" v-if="event.remark">
-					<text class="remark-text">{{getShortRemark(event.remark)}}</text>
+				<view class="event-remark">
+					<text class="remark-text" :class="{ 'remark-placeholder': !event.remark }">{{event.remark ? getShortRemark(event.remark) : '占位备注'}}</text>
 				</view>
-				<view class="event-tags">
-					<text 
-						class="tag" 
-						v-for="labelId in getEventLabelIds(event)" 
-						:key="labelId"
-						:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
-					>
-						{{getLabelName(parseInt(labelId))}}
-					</text>
-				</view>
-				<view class="event-actions" v-if="!event.isTerminated">
-					<button class="action-btn complete-btn" @click.stop="markComplete(event.id)">完成</button>
-				</view>
-				<view class="terminated-badge" v-if="event.isTerminated">
-					<text class="terminated-text">已终止</text>
+				<view class="event-footer">
+					<view class="event-tags">
+						<text 
+							class="tag" 
+							v-for="labelId in getEventLabelIds(event)" 
+							:key="labelId"
+							:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
+						>
+							{{getLabelName(parseInt(labelId))}}
+						</text>
+					</view>
+					<button class="action-btn complete-btn compact-btn" v-if="canComplete(event)" @click.stop="markComplete(event.id)">完成</button>
 				</view>
 			</view>
 			<view class="empty-tip" v-if="filteredEvents.length === 0">
@@ -113,7 +110,7 @@
 				return false
 			}
 
-			if (EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))) {
+			if (shouldHideCompletedEvent(event)) {
 				return false
 			}
 
@@ -122,7 +119,7 @@
 			}
 
 			return event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
-		})
+		}).sort((a, b) => compareEventsForDisplay(a, b))
 	})
 
 	const getEventLabelIds = (event: Event): number[] => {
@@ -148,6 +145,58 @@
 		}
 
 		return event.isTerminated
+	}
+
+	const isCompletedEvent = (event: Event): boolean => {
+		return EventManager.isCompletedOnDate(event.id, Date.now()) || EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
+	}
+
+	const shouldHideCompletedEvent = (_event: Event): boolean => false
+
+	const getEventDisplayGroup = (event: Event): number => {
+		if (!event.isTerminated && !isCompletedEvent(event)) {
+			return 0
+		}
+		if (isCompletedEvent(event) && !event.isTerminated) {
+			return 1
+		}
+		return 2
+	}
+
+	const getCompletionSortTime = (event: Event): number => {
+		return getLastCompleteDate(event) || 0
+	}
+
+	const compareEventsForDisplay = (a: Event, b: Event): number => {
+		if (selectedStatus.value?.id === 2) {
+			return 0
+		}
+
+		const groupA = getEventDisplayGroup(a)
+		const groupB = getEventDisplayGroup(b)
+		if (groupA !== groupB) {
+			return groupA - groupB
+		}
+
+		if (groupA === 1) {
+			return getCompletionSortTime(b) - getCompletionSortTime(a)
+		}
+
+		if (groupA === 2) {
+			return (b.terminatedAt || 0) - (a.terminatedAt || 0)
+		}
+
+		return 0
+	}
+
+	const canComplete = (event: Event): boolean => {
+		if (event.isTerminated) {
+			return false
+		}
+		if (EventManager.isCompletedOnDate(event.id, Date.now())) {
+			return false
+		}
+		return !EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
 	}
 
 	// 获取标签名称
@@ -180,6 +229,12 @@
 	// 获取天数文本
 	const getDaysText = (event: Event): string => {
 		const lastCompleteDate = getLastCompleteDate(event)
+		if (event.isTerminated) {
+			return '已终止'
+		}
+		if (EventManager.isCompletedOnDate(event.id, Date.now())) {
+			return '已完成'
+		}
 		if (EventManager.isFixedDateCompleted(event, lastCompleteDate)) {
 			return '已完成'
 		}
@@ -197,8 +252,9 @@
 
 	// 标记完成
 	const markComplete = (eventId: number) => {
-		const targetEvent = events.value.find(item => item.id === eventId) || EventManager.getEventById(eventId)
-		if (targetEvent?.nextDueDate && targetEvent.nextDueDate > 0) {
+		const event = events.value.find(item => item.id === eventId) || EventManager.getEventById(eventId)
+		if (!event) return
+		if (event.nextDueDate > 0) {
 			uni.navigateTo({
 				url: `/pages/event/complete?id=${eventId}`
 			})
@@ -206,18 +262,22 @@
 		}
 
 		const success = EventManager.markEventComplete(eventId)
-		if (success) {
-			loadData()
-			uni.showToast({
-				title: '已完成',
-				icon: 'success'
-			})
-		} else {
+		if (!success) {
 			uni.showToast({
 				title: '今天已完成过',
 				icon: 'none'
 			})
+			return
 		}
+
+		if (event.intervalDays < 0) {
+			EventManager.terminateEvent(eventId)
+		}
+		loadData()
+		uni.showToast({
+			title: '已完成',
+			icon: 'success'
+		})
 	}
 
 	// 标签筛选改变
@@ -340,12 +400,13 @@
 	.event-card {
 		background-color: #fffdf9;
 		border-radius: 22px;
-		padding: 16px;
-		margin-bottom: 12px;
+		padding: 14px 16px 12px;
+		margin-bottom: 10px;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #ecdfd2;
 		box-shadow: 0 10px 24px rgba(31, 122, 114, 0.08);
+		min-height: 112px;
 	}
 
 	.event-card.overdue {
@@ -360,8 +421,8 @@
 	.event-header {
 		flex-direction: row;
 		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 10px;
+		align-items: flex-start;
+		margin-bottom: 6px;
 	}
 
 	.event-name {
@@ -369,6 +430,7 @@
 		color: #24323a;
 		font-weight: bold;
 		flex: 1;
+		padding-right: 10px;
 	}
 
 	.event-days {
@@ -377,7 +439,7 @@
 		background-color: #f1ece4;
 		padding: 6px 10px;
 		border-radius: 999px;
-		margin-left: 10px;
+		margin-left: 0;
 	}
 
 	.event-days.overdue-text {
@@ -385,47 +447,67 @@
 		background-color: #f8ddd3;
 	}
 
+	.event-days.terminated-text {
+		color: #7b6655;
+		background-color: #efe4d8;
+	}
+
 	.event-tags {
 		flex-direction: row;
 		flex-wrap: wrap;
-		margin-bottom: 8px;
+		flex: 1;
+		padding-right: 10px;
 	}
 
 	.tag {
-		font-size: 12px;
+		font-size: 11px;
 		color: #fff;
-		padding: 4px 10px;
+		padding: 3px 9px;
 		border-radius: 999px;
 		margin-right: 6px;
 		margin-bottom: 5px;
 	}
 
 	.event-remark {
-		margin-bottom: 10px;
+		margin-bottom: 8px;
+		min-height: 20px;
 	}
 
 	.remark-text {
-		font-size: 13px;
+		font-size: 11px;
 		color: #72808d;
-		line-height: 1.5;
+		line-height: 1.45;
 	}
 
-	.event-actions {
+	.remark-placeholder {
+		opacity: 0;
+	}
+
+	.event-footer {
 		flex-direction: row;
-		justify-content: flex-end;
-		align-items: center;
+		justify-content: space-between;
+		align-items: flex-end;
+		min-height: 38px;
 	}
 
 	.action-btn {
 		margin-left: 10px;
 		font-size: 13px;
-		padding: 0 16px;
-		height: 34px;
-		line-height: 34px;
+		font-weight: 600;
+		padding: 0 20px;
+		height: 38px;
+		line-height: 38px;
 		background-color: #1f7a72;
 		color: #fff;
 		border-radius: 999px;
 		box-shadow: 0 8px 18px rgba(31, 122, 114, 0.18);
+	}
+
+	.compact-btn {
+		height: 38px;
+		line-height: 38px;
+		padding: 0 20px;
+		margin-left: 0;
 	}
 
 	/* 空状态 */
@@ -486,15 +568,4 @@
 		font-weight: 300;
 	}
 
-	.terminated-badge {
-		align-self: flex-start;
-		background-color: #efe4d8;
-		padding: 4px 10px;
-		border-radius: 999px;
-	}
-
-	.terminated-text {
-		font-size: 12px;
-		color: #7b6655;
-	}
 </style>

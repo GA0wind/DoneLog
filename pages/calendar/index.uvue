@@ -8,13 +8,13 @@
 					<view class="picker-group">
 						<picker class="header-picker" mode="selector" :range="yearOptions" @change="onYearChange">
 							<view class="header-picker-inner">
-								<text class="current-date">{{currentYear}}年</text>
+								<text class="current-date">{{displayYear}}年</text>
 								<text class="picker-arrow">▼</text>
 							</view>
 						</picker>
 						<picker class="header-picker month-picker" mode="selector" :range="monthOptions" @change="onMonthChange">
 							<view class="header-picker-inner">
-								<text class="current-date">{{currentMonth}}月</text>
+								<text class="current-date">{{displayMonth}}月</text>
 								<text class="picker-arrow">▼</text>
 							</view>
 						</picker>
@@ -29,7 +29,7 @@
 			</view>
 
 			<!-- 日历网格 -->
-			<swiper class="calendar-swiper" :current="swiperIndex" @change="onSwiperChange">
+			<swiper class="calendar-swiper" :current="swiperIndex" :duration="swiperDuration" @change="onSwiperChange" @animationfinish="onSwiperAnimationFinish">
 				<swiper-item v-for="(month, index) in calendarMonths" :key="index">
 					<view class="calendar-grid">
 						<view 
@@ -51,6 +51,26 @@
 			</swiper>
 		</view>
 
+		<view class="account-section">
+			<view class="section-title">
+				<text>{{selectedDateText}}的收支</text>
+			</view>
+			<view class="account-summary-card">
+				<view class="account-summary-item">
+					<text class="account-summary-value">¥{{selectedDateOverview.expense.toFixed(2)}}</text>
+					<text class="account-summary-label">支出</text>
+				</view>
+				<view class="account-summary-item">
+					<text class="account-summary-value">¥{{selectedDateOverview.income.toFixed(2)}}</text>
+					<text class="account-summary-label">收入</text>
+				</view>
+				<view class="account-summary-item">
+					<text class="account-summary-value">{{selectedDateOverview.count}}</text>
+					<text class="account-summary-label">记录数</text>
+				</view>
+			</view>
+		</view>
+
 		<!-- 事件列表 -->
 		<view class="event-section">
 			<view class="section-title">
@@ -65,22 +85,12 @@
 				>
 					<view class="event-header">
 						<text class="event-name">{{event.name}}</text>
-						<text class="event-status" :class="{ 'terminated': event.isTerminated }">
-							{{event.isTerminated ? '已终止' : '进行中'}}
+						<text class="event-status" :class="{ 'terminated': isTerminatedOnSelectedDate(event), 'completed': isCompletedOnSelectedDate(event) }">
+							{{getEventStatusText(event)}}
 						</text>
 					</view>
 					<view class="event-remark" v-if="event.remark">
 						<text class="remark-text">{{getShortRemark(event.remark)}}</text>
-					</view>
-					<view class="event-tags">
-						<text
-							class="tag"
-							v-for="labelId in getEventLabelIds(event)"
-							:key="labelId"
-							:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
-						>
-							{{getLabelName(parseInt(labelId))}}
-						</text>
 					</view>
 				</view>
 				<view class="empty-tip" v-if="filteredEvents.length === 0">
@@ -94,6 +104,7 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AccountManager, AccountOverview } from '@/utils/accountManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
 
 	// 初始化ID
@@ -103,6 +114,7 @@
 	// 响应式数据
 	const events = ref<Event[]>([])
 	const labels = ref<Label[]>([])
+	const selectedDateOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
 	const currentYear = ref(new Date().getFullYear())
 	const currentMonth = ref(new Date().getMonth() + 1)
 	const selectedDate = ref({
@@ -111,10 +123,19 @@
 		day: new Date().getDate()
 	})
 	const swiperIndex = ref(0)
+	const swiperDuration = ref(300)
 	const calendarMonths = ref<any[]>([])
 	const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 	const yearOptions = Array.from({ length: 101 }, (_, index) => `${2000 + index}年`)
 	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
+	const displayYear = computed(() => {
+		const monthData = calendarMonths.value[swiperIndex.value]
+		return monthData ? monthData.year : currentYear.value
+	})
+	const displayMonth = computed(() => {
+		const monthData = calendarMonths.value[swiperIndex.value]
+		return monthData ? monthData.month : currentMonth.value
+	})
 
 	// 获取选中的日期文本
 	const selectedDateText = computed(() => {
@@ -125,6 +146,7 @@
 	const loadData = () => {
 		events.value = EventManager.getSortedEvents(true, null)
 		labels.value = LabelManager.getSortedLabels()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 		generateCalendar()
 	}
 
@@ -137,6 +159,14 @@
 		}
 		calendarMonths.value = months
 		swiperIndex.value = 1
+	}
+
+	const generateCalendarSilently = () => {
+		swiperDuration.value = 0
+		generateCalendar()
+		setTimeout(() => {
+			swiperDuration.value = 300
+		}, 0)
 	}
 
 	const getOffsetYearMonth = (year: number, month: number, offset: number) => {
@@ -233,8 +263,9 @@
 		if (!day.isCurrentMonth) {
 			currentYear.value = day.year
 			currentMonth.value = day.month
-			generateCalendar()
+			generateCalendarSilently()
 		}
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	// 上一月
@@ -245,7 +276,8 @@
 			currentYear.value--
 		}
 		syncSelectedDateToCurrentMonth()
-		generateCalendar()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	// 下一月
@@ -256,55 +288,85 @@
 			currentYear.value++
 		}
 		syncSelectedDateToCurrentMonth()
-		generateCalendar()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	// swiper切换
 	const onSwiperChange = (e: any) => {
+		swiperIndex.value = e.detail.current
+	}
+
+	const onSwiperAnimationFinish = (e: any) => {
 		const index = e.detail.current
-		if (index === 0) {
-			prevMonth()
-		} else if (index === 2) {
-			nextMonth()
+		if (index === 1) {
+			return
 		}
+
+		const monthData = calendarMonths.value[index]
+		if (!monthData) {
+			return
+		}
+
+		currentYear.value = monthData.year
+		currentMonth.value = monthData.month
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	const onYearChange = (e: any) => {
 		currentYear.value = 2000 + parseInt(e.detail.value)
 		syncSelectedDateToCurrentMonth()
-		generateCalendar()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	const onMonthChange = (e: any) => {
 		currentMonth.value = parseInt(e.detail.value) + 1
 		syncSelectedDateToCurrentMonth()
-		generateCalendar()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	// 获取标签名称
-	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
-		return label ? label.name : ''
-	}
-
-	// 获取标签颜色
-	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
-		return label ? label.color : '#007AFF'
-	}
-
-	const getEventLabelIds = (event: Event): number[] => {
-		if (!event.labelIdList) return []
-		return event.labelIdList
-			.split(',')
-			.map(id => parseInt(id))
-			.filter(id => !Number.isNaN(id))
-	}
-
 	// 获取短备注
 	const getShortRemark = (remark: string): string => {
 		if (!remark) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
+	}
+
+	const getSelectedDateStart = (): number => {
+		return new Date(selectedDate.value.year, selectedDate.value.month - 1, selectedDate.value.day).getTime()
+	}
+
+	const isCompletedOnSelectedDate = (event: Event): boolean => {
+		return EventManager.isCompletedOnDate(event.id, getSelectedDateStart())
+	}
+
+	const isCompletedOnDay = (event: Event, dayStart: number): boolean => {
+		return EventManager.isCompletedOnDate(event.id, dayStart)
+	}
+
+	const getEventStatusText = (event: Event): string => {
+		if (isCompletedOnSelectedDate(event)) {
+			return '已完成'
+		}
+		if (isTerminatedOnSelectedDate(event)) {
+			return '已终止'
+		}
+		return '待完成'
+	}
+
+	const isTerminatedOnSelectedDate = (event: Event): boolean => {
+		return isTerminatedOnDay(event, getSelectedDateStart())
+	}
+
+	const isTerminatedOnDay = (event: Event, dayStart: number): boolean => {
+		if (!event.isTerminated || event.terminatedAt <= 0) {
+			return false
+		}
+		return getStartOfDay(event.terminatedAt) === dayStart
 	}
 
 	const getStartOfDay = (timestamp: number): number => {
@@ -321,17 +383,19 @@
 			}
 		}
 
+		if (isTerminatedOnDay(event, selectedDayStart)) {
+			return true
+		}
 		if (event.isTerminated) {
 			return false
 		}
-
 		const dueDateStart = EventManager.getDueDateStart(event, history[0]?.lastCompleteDate || null)
 		return dueDateStart === selectedDayStart
 	}
 
 	// 筛选选中日期的事件
 	const filteredEvents = computed(() => {
-		const selectedDateStart = new Date(selectedDate.value.year, selectedDate.value.month - 1, selectedDate.value.day).getTime()
+		const selectedDateStart = getSelectedDateStart()
 		return events.value.filter(event => isEventRelevantOnDate(event, selectedDateStart))
 	})
 
@@ -572,6 +636,10 @@
 		background-color: #9a8f84;
 	}
 
+	.event-status.completed {
+		background-color: #e07a5f;
+	}
+
 	.event-remark {
 		margin-bottom: 8px;
 	}
@@ -582,24 +650,41 @@
 		line-height: 1.5;
 	}
 
-	.event-tags {
-		flex-direction: row;
-		flex-wrap: wrap;
-		margin-bottom: 10px;
-	}
-
-	.tag {
-		font-size: 12px;
-		color: #fff;
-		padding: 2px 8px;
-		border-radius: 10px;
-		margin-right: 5px;
-		margin-bottom: 5px;
-	}
-
 	.empty-tip {
 		text-align: center;
 		padding: 40px 0;
 		color: #999;
+	}
+
+	.account-section {
+		padding: 4px 2px 12px;
+	}
+
+	.account-summary-card {
+		flex-direction: row;
+		background-color: #fffaf3;
+		border-radius: 20px;
+		padding: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 10px 24px rgba(36, 50, 58, 0.05);
+	}
+
+	.account-summary-item {
+		flex: 1;
+	}
+
+	.account-summary-value {
+		display: block;
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.account-summary-label {
+		font-size: 12px;
+		color: #72808d;
 	}
 </style>
