@@ -73,6 +73,10 @@
 					<text class="summary-value">{{accountOverview.count}}</text>
 					<text class="summary-label">记账笔数</text>
 				</view>
+				<view class="summary-item" v-if="budgetOverview.monthlyExpenseBudget > 0">
+					<text class="summary-value">¥{{budgetOverview.remainingAmount.toFixed(2)}}</text>
+					<text class="summary-label">预算剩余</text>
+				</view>
 			</view>
 			<view class="stats-list" v-if="accountStats.length > 0">
 				<view class="stat-row" v-for="stat in accountStats" :key="`account-${stat.labelId}`">
@@ -88,6 +92,16 @@
 			</view>
 			<view class="empty-card" v-else>
 				<text>这个周期还没有记账数据</text>
+			</view>
+		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">效率工具</text>
+					<text class="section-desc">用番茄钟把今天要做的事推进一小格。</text>
+				</view>
+				<button class="link-btn" @click="goToPomodoro">番茄钟</button>
 			</view>
 		</view>
 
@@ -120,6 +134,33 @@
 				</view>
 			</view>
 		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">数据管理</text>
+					<text class="section-desc">备份当前数据，或恢复一份之前复制出来的备份。</text>
+				</view>
+			</view>
+			<view class="data-actions">
+				<button class="data-btn primary" @click="exportBackup">导出备份</button>
+				<button class="data-btn" @click="showImportDialog">导入备份</button>
+				<button class="data-btn danger" @click="resetDefaultLabels">重置默认标签</button>
+			</view>
+			<text class="data-tip">重置标签只会清空标签和记录上的标签关联，不会删除事件、完成记录或记账记录。</text>
+		</view>
+
+		<view class="modal" v-if="showImportModal" @click="hideImportDialog">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">导入备份</text>
+				<textarea class="import-textarea" v-model="importText" placeholder="粘贴导出的备份 JSON" />
+				<text class="error-tip" v-if="importError">{{importError}}</text>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideImportDialog">取消</button>
+					<button class="confirm-btn" @click.stop="importBackup">导入</button>
+				</view>
+			</view>
+		</view>
 	</scroll-view>
 </template>
 
@@ -127,7 +168,7 @@
 	import { EventManager, EventLabelStats, EventWidgetItem, StatsPeriod } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager, AccountLabelStats } from '@/utils/accountManager.uts'
-	import { Label } from '@/utils/storage.uts'
+	import { Label, StorageUtils } from '@/utils/storage.uts'
 
 	EventManager.initIds()
 	LabelManager.initIds()
@@ -139,8 +180,12 @@
 	const eventStats = ref<EventLabelStats[]>([])
 	const accountStats = ref<AccountLabelStats[]>([])
 	const accountOverview = ref({ income: 0, expense: 0, count: 0 })
+	const budgetOverview = ref({ monthlyExpenseBudget: 0, usedAmount: 0, remainingAmount: 0, usedPercent: 0, isOverBudget: false })
 	const todayWidgetOverview = ref({ income: 0, expense: 0, count: 0 })
 	const widgetEvents = ref<EventWidgetItem[]>([])
+	const showImportModal = ref(false)
+	const importText = ref('')
+	const importError = ref('')
 
 	const periodText = computed(() => period.value === 'week' ? '本周' : '本月')
 	const eventTotalCount = computed(() => eventStats.value.reduce((sum, item) => sum + item.count, 0))
@@ -157,6 +202,7 @@
 		eventStats.value = EventManager.getCompletionStatsByLabel(period.value)
 		accountStats.value = AccountManager.getStatsByLabel(period.value)
 		accountOverview.value = AccountManager.getOverview(period.value)
+		budgetOverview.value = AccountManager.getMonthlyBudgetOverview()
 		todayWidgetOverview.value = AccountManager.getOverviewByDate(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime())
 		widgetEvents.value = EventManager.getWidgetSnapshot()
 	}
@@ -199,6 +245,74 @@
 	const goToAccountChart = () => {
 		uni.navigateTo({
 			url: `/pages/my/account-chart?period=${period.value}`
+		})
+	}
+
+	const goToPomodoro = () => {
+		uni.navigateTo({
+			url: '/pages/pomodoro/index'
+		})
+	}
+
+	const exportBackup = () => {
+		const backup = StorageUtils.exportData()
+		uni.setClipboardData({
+			data: backup,
+			success: () => {
+				uni.showToast({ title: '备份已复制', icon: 'success' })
+			},
+			fail: () => {
+				uni.showToast({ title: '复制失败', icon: 'none' })
+			}
+		})
+	}
+
+	const showImportDialog = () => {
+		importText.value = ''
+		importError.value = ''
+		showImportModal.value = true
+	}
+
+	const hideImportDialog = () => {
+		showImportModal.value = false
+		importError.value = ''
+	}
+
+	const importBackup = () => {
+		if (!importText.value.trim()) {
+			importError.value = '请先粘贴备份内容'
+			return
+		}
+
+		const success = StorageUtils.importData(importText.value.trim())
+		if (!success) {
+			importError.value = '导入失败，请确认备份内容完整'
+			uni.showToast({ title: '导入失败', icon: 'none' })
+			return
+		}
+
+		EventManager.initIds()
+		LabelManager.initIds()
+		AccountManager.initIds()
+		hideImportDialog()
+		loadData()
+		uni.showToast({ title: '导入成功', icon: 'success' })
+	}
+
+	const resetDefaultLabels = () => {
+		uni.showModal({
+			title: '重置默认标签',
+			content: '会清空当前标签，并移除记录上的旧标签关联。事件、完成记录和记账记录不会删除。',
+			success: (res) => {
+				if (!res.confirm) return
+				const success = LabelManager.resetAllDefaultLabels()
+				if (!success) {
+					uni.showToast({ title: '重置失败', icon: 'none' })
+					return
+				}
+				loadData()
+				uni.showToast({ title: '已重置标签', icon: 'success' })
+			}
 		})
 	}
 
@@ -540,5 +654,116 @@
 	.widget-empty {
 		background-color: rgba(255, 255, 255, 0.08);
 		color: #dce5ea;
+	}
+
+	.data-actions {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.data-btn {
+		height: 40px;
+		line-height: 40px;
+		padding: 0 14px;
+		border-radius: 20px;
+		font-size: 13px;
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		margin-right: 8px;
+		margin-bottom: 8px;
+	}
+
+	.data-btn.primary {
+		background-color: #1f7a72;
+		color: #fff;
+	}
+
+	.data-btn.danger {
+		background-color: #e07a5f;
+		color: #fff;
+	}
+
+	.data-tip {
+		font-size: 12px;
+		line-height: 1.6;
+		color: #8792a1;
+		margin-top: 2px;
+	}
+
+	.modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.36);
+		justify-content: center;
+		align-items: center;
+		padding: 16px;
+		z-index: 1000;
+	}
+
+	.modal-content {
+		width: 100%;
+		max-height: 78vh;
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.modal-title {
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 12px;
+	}
+
+	.import-textarea {
+		width: 100%;
+		min-height: 180px;
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 12px;
+		font-size: 12px;
+		color: #24323a;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
+	}
+
+	.modal-footer {
+		flex-direction: row;
+		margin-top: 14px;
+	}
+
+	.cancel-btn,
+	.confirm-btn {
+		flex: 1;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
+	}
+
+	.cancel-btn {
+		background-color: #f0e7dc;
+		color: #4d5b67;
+		margin-right: 10px;
+	}
+
+	.confirm-btn {
+		background-color: #1f7a72;
+		color: #fff;
+		margin-left: 10px;
 	}
 </style>

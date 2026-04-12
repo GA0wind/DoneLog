@@ -81,37 +81,39 @@
 		</view>
 
 		<!-- 标签选择弹窗 -->
-		<view class="modal" v-if="showLabelSelector" @click="hideLabelModal">
+		<view class="modal selector-modal" v-if="showLabelSelector" @click="hideLabelModal">
 			<view class="modal-content" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">选择标签</text>
 				</view>
-				<scroll-view scroll-y class="modal-body">
+				<scroll-view scroll-y class="modal-body selector-body">
 					<view class="label-list">
 						<view 
 							class="label-item" 
 							v-for="label in labels" 
 							:key="label.id"
 							:class="{ 'selected': selectedLabelIds.includes(label.id) }"
-							@click="toggleLabel(label.id)"
+							@click.stop="toggleLabel(label.id)"
 						>
 							<view class="label-info">
 								<view class="label-color" :style="{ backgroundColor: label.color }"></view>
 								<text class="label-name">{{label.name}}</text>
 							</view>
-							<text class="check-icon" v-if="selectedLabelIds.includes(label.id)">✓</text>
+							<view class="label-check-wrap">
+								<text class="label-check" :class="{ visible: selectedLabelIds.includes(label.id) }">✓</text>
+							</view>
 						</view>
 					</view>
 				</scroll-view>
 				<view class="modal-footer">
-					<button class="add-label-btn" @click="showAddLabel">新增标签</button>
-					<button class="confirm-btn" @click="confirmLabels">确定</button>
+					<button class="add-label-btn" @click.stop="showAddLabel">新增标签</button>
+					<button class="confirm-btn" @click.stop="confirmLabels">确定</button>
 				</view>
 			</view>
 		</view>
 
 		<!-- 新增标签弹窗 -->
-		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
+		<view class="modal add-label-modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
 			<view class="modal-content" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">新增标签</text>
@@ -119,7 +121,8 @@
 				<view class="modal-body">
 					<view class="form-item">
 						<text class="label">标签名称</text>
-						<input class="input" v-model="newLabelName" placeholder="请输入标签名称" />
+						<input class="input" v-model="newLabelName" placeholder="请输入标签名称" confirm-type="done" @input="clearNewLabelError" @confirm="addNewLabel" />
+						<text class="error-tip" v-if="newLabelError">{{newLabelError}}</text>
 					</view>
 					<view class="form-item">
 						<text class="label">标签颜色</text>
@@ -130,7 +133,7 @@
 								:key="color"
 								:class="{ 'selected': newLabelColor === color }"
 								:style="{ backgroundColor: color }"
-								@click="newLabelColor = color"
+								@click.stop="newLabelColor = color"
 							>
 								<text v-if="newLabelColor === color" class="check-icon">✓</text>
 							</view>
@@ -138,8 +141,8 @@
 					</view>
 				</view>
 				<view class="modal-footer">
-					<button class="cancel-btn" @click="hideAddLabelModal">取消</button>
-					<button class="confirm-btn" @click="addNewLabel">确定</button>
+					<button class="cancel-btn" @click.stop="hideAddLabelModal">取消</button>
+					<button class="confirm-btn" @click.stop="addNewLabel">确定</button>
 				</view>
 			</view>
 		</view>
@@ -163,7 +166,9 @@
 	const remark = ref('')
 	const showLabelSelector = ref(false)
 	const showAddLabelModal = ref(false)
+	const shouldRestoreLabelSelector = ref(false)
 	const newLabelName = ref('')
+	const newLabelError = ref('')
 	const newLabelColor = ref('#007AFF')
 
 	// 预设颜色选项
@@ -255,18 +260,38 @@
 	// 显示新增标签弹窗
 	const showAddLabel = () => {
 		newLabelName.value = ''
+		newLabelError.value = ''
 		newLabelColor.value = '#007AFF'
+		shouldRestoreLabelSelector.value = showLabelSelector.value
+		showLabelSelector.value = false
 		showAddLabelModal.value = true
+	}
+
+	const closeAddLabelModal = (restoreSelector: boolean) => {
+		showAddLabelModal.value = false
+		newLabelError.value = ''
+		if (restoreSelector && shouldRestoreLabelSelector.value) {
+			showLabelSelector.value = true
+		}
+		shouldRestoreLabelSelector.value = false
+	}
+
+	const clearNewLabelError = () => {
+		if (newLabelError.value) {
+			newLabelError.value = ''
+		}
 	}
 
 	// 隐藏新增标签弹窗
 	const hideAddLabelModal = () => {
-		showAddLabelModal.value = false
+		closeAddLabelModal(true)
 	}
 
 	// 新增标签
 	const addNewLabel = () => {
-		if (!newLabelName.value.trim()) {
+		const createdName = newLabelName.value.trim()
+		if (!createdName) {
+			newLabelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
 				icon: 'none'
@@ -274,17 +299,38 @@
 			return
 		}
 
-		const success = LabelManager.addLabel(newLabelName.value, newLabelColor.value)
+		const existingLabel = LabelManager.getLabelByName(createdName)
+		if (existingLabel) {
+			if (!selectedLabelIds.value.includes(existingLabel.id)) {
+				selectedLabelIds.value.push(existingLabel.id)
+			}
+			newLabelError.value = '已存在同名标签，已为你选中'
+			uni.showToast({
+				title: '标签已存在，已选中',
+				icon: 'none'
+			})
+			return
+		}
+
+		const success = LabelManager.addLabel(createdName, newLabelColor.value)
 		if (success) {
+			newLabelName.value = ''
+			newLabelError.value = ''
+			newLabelColor.value = '#007AFF'
 			uni.showToast({
 				title: '添加成功',
 				icon: 'success'
 			})
 			loadLabels()
-			hideAddLabelModal()
+			const created = labels.value.find(item => item.name === createdName)
+			if (created && !selectedLabelIds.value.includes(created.id)) {
+				selectedLabelIds.value.push(created.id)
+			}
+			closeAddLabelModal(true)
 		} else {
+			newLabelError.value = '添加失败，请稍后再试'
 			uni.showToast({
-				title: '添加失败或名称重复',
+				title: '添加失败',
 				icon: 'none'
 			})
 		}
@@ -480,7 +526,7 @@
 	}
 
 	.tag-selector {
-		min-height: 44px;
+		height: 44px;
 		background-color: #fffdf9;
 		border-radius: 16px;
 		padding: 8px 12px;
@@ -490,6 +536,8 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 
 	.selected-tags {
@@ -497,15 +545,20 @@
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
+		height: 26px;
+		max-height: 26px;
+		overflow: hidden;
 	}
 
 	.tag {
 		font-size: 12px;
 		color: #fff;
-		padding: 2px 8px;
+		height: 22px;
+		line-height: 22px;
+		padding: 0 8px;
 		border-radius: 10px;
 		margin-right: 5px;
-		margin-bottom: 5px;
+		margin-bottom: 0;
 	}
 
 	.placeholder {
@@ -562,6 +615,13 @@
 		margin-top: 8px;
 	}
 
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
+	}
+
 	.action-buttons {
 		flex-direction: row;
 		justify-content: space-between;
@@ -603,6 +663,14 @@
 		z-index: 1000;
 	}
 
+	.selector-modal {
+		z-index: 1000;
+	}
+
+	.add-label-modal {
+		z-index: 1010;
+	}
+
 	.modal-content {
 		background-color: #fffaf3;
 		border-radius: 22px;
@@ -627,26 +695,41 @@
 		max-height: 400px;
 	}
 
+	.selector-body {
+		height: 420px;
+		max-height: 52vh;
+	}
+
 	.label-list {
-		max-height: 300px;
+		padding: 0;
 	}
 
 	.label-item {
+		position: relative;
 		flex-direction: row;
 		justify-content: space-between;
 		align-items: center;
-		padding: 12px;
-		border-bottom: 1px solid #f5f5f5;
+		height: 52px;
+		padding: 0 44px 0 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: transparent;
+		border-radius: 16px;
+		margin-bottom: 8px;
+		background-color: #fffdf9;
+		box-sizing: border-box;
 	}
 
 	.label-item.selected {
 		background-color: #e8f4f2;
+		border-color: #d7ece8;
 	}
 
 	.label-info {
 		flex-direction: row;
 		align-items: center;
 		flex: 1;
+		min-width: 0;
 	}
 
 	.label-color {
@@ -659,12 +742,37 @@
 	.label-name {
 		font-size: 16px;
 		color: #24323a;
+		flex: 1;
+		lines: 1;
+		text-overflow: ellipsis;
 	}
 
 	.check-icon {
 		font-size: 20px;
 		color: #1f7a72;
 		font-weight: bold;
+	}
+
+	.label-check-wrap {
+		position: absolute;
+		right: 10px;
+		top: 0;
+		bottom: 0;
+		width: 24px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.label-check {
+		width: 24px;
+		font-size: 18px;
+		color: #1f7a72;
+		text-align: center;
+		opacity: 0;
+	}
+
+	.label-check.visible {
+		opacity: 1;
 	}
 
 	.modal-footer {

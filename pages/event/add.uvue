@@ -25,7 +25,7 @@
 						</view>
 						<text class="arrow">▼</text>
 					</view>
-					<button class="mini-add-btn" @click="openAddLabelModal">新增标签</button>
+					<button class="mini-add-btn" @click.stop="openAddLabelModal">新增标签</button>
 				</view>
 			</view>
 
@@ -90,7 +90,7 @@
 		</view>
 
 		<!-- 标签选择弹窗 -->
-		<view class="modal" v-if="showLabelSelector" @click="hideLabelModal">
+		<view class="modal selector-modal" v-if="showLabelSelector" @click="hideLabelModal">
 			<view class="modal-content selector-modal-content" @click.stop>
 				<text class="modal-title">选择标签</text>
 				<scroll-view scroll-y class="selector-body">
@@ -99,7 +99,7 @@
 						:class="{ selected: selectedLabelIds.includes(label.id) }"
 						v-for="label in labels"
 						:key="label.id"
-						@click="toggleLabel(label.id)"
+						@click.stop="toggleLabel(label.id)"
 					>
 						<view class="selector-left">
 							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>
@@ -111,19 +111,20 @@
 					</view>
 				</scroll-view>
 				<view class="modal-footer">
-					<button class="confirm-btn single-btn" @click="confirmLabels">确定</button>
+					<button class="confirm-btn single-btn" @click.stop="confirmLabels">确定</button>
 				</view>
 			</view>
 		</view>
 
 		<!-- 新增标签弹窗 -->
-		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
+		<view class="modal add-label-modal" v-if="showAddLabelModal" @click="hideAddLabelModal">
 			<view class="modal-content selector-modal-content" @click.stop>
 				<text class="modal-title">新增标签</text>
 				<view class="modal-body">
 					<view class="form-item">
 						<text class="label">标签名称</text>
-						<input class="input" v-model="newLabelName" placeholder="请输入标签名称" />
+						<input class="input" v-model="newLabelName" placeholder="请输入标签名称" confirm-type="done" @input="clearNewLabelError" @confirm="addNewLabel" />
+						<text class="error-tip" v-if="newLabelError">{{newLabelError}}</text>
 					</view>
 					<view class="form-item">
 						<text class="label">标签颜色</text>
@@ -134,7 +135,7 @@
 								:key="color"
 								:class="{ 'selected': newLabelColor === color }"
 								:style="{ backgroundColor: color }"
-								@click="newLabelColor = color"
+								@click.stop="newLabelColor = color"
 							>
 								<text v-if="newLabelColor === color" class="color-check-icon">✓</text>
 							</view>
@@ -142,8 +143,8 @@
 					</view>
 				</view>
 				<view class="modal-footer">
-					<button class="cancel-btn" @click="hideAddLabelModal">取消</button>
-					<button class="confirm-btn" @click="addNewLabel">确定</button>
+					<button class="cancel-btn" @click.stop="hideAddLabelModal">取消</button>
+					<button class="confirm-btn" @click.stop="addNewLabel">确定</button>
 				</view>
 			</view>
 		</view>
@@ -167,6 +168,7 @@
 	const showLabelSelector = ref(false)
 	const showAddLabelModal = ref(false)
 	const newLabelName = ref('')
+	const newLabelError = ref('')
 	const newLabelColor = ref('#007AFF')
 
 	// 预设颜色选项
@@ -216,6 +218,7 @@
 	// 显示新增标签弹窗
 	const openAddLabelModal = () => {
 		newLabelName.value = ''
+		newLabelError.value = ''
 		newLabelColor.value = '#007AFF'
 		showAddLabelModal.value = true
 	}
@@ -223,14 +226,35 @@
 	// 隐藏新增标签弹窗
 	const hideAddLabelModal = () => {
 		showAddLabelModal.value = false
+		newLabelError.value = ''
+	}
+
+	const clearNewLabelError = () => {
+		if (newLabelError.value) {
+			newLabelError.value = ''
+		}
 	}
 
 	// 新增标签
 	const addNewLabel = () => {
 		const createdName = newLabelName.value.trim()
 		if (!createdName) {
+			newLabelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
+				icon: 'none'
+			})
+			return
+		}
+
+		const existingLabel = LabelManager.getLabelByName(createdName, 'event')
+		if (existingLabel) {
+			if (!selectedLabelIds.value.includes(existingLabel.id)) {
+				selectedLabelIds.value.push(existingLabel.id)
+			}
+			newLabelError.value = '已存在同名标签，已为你选中'
+			uni.showToast({
+				title: '标签已存在，已选中',
 				icon: 'none'
 			})
 			return
@@ -239,6 +263,7 @@
 		const success = LabelManager.addLabel(createdName, newLabelColor.value, 'event')
 		if (success) {
 			newLabelName.value = ''
+			newLabelError.value = ''
 			newLabelColor.value = '#007AFF'
 			uni.showToast({
 				title: '添加成功',
@@ -251,8 +276,9 @@
 			}
 			showAddLabelModal.value = false
 		} else {
+			newLabelError.value = '添加失败，请稍后再试'
 			uni.showToast({
-				title: '添加失败或名称重复',
+				title: '添加失败',
 				icon: 'none'
 			})
 		}
@@ -416,7 +442,7 @@
 	.tag-selector {
 		flex: 1;
 		margin-right: 10px;
-		min-height: 44px;
+		height: 44px;
 		background-color: #fffdf9;
 		border-radius: 16px;
 		padding: 8px 12px;
@@ -426,6 +452,8 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 
 	.selected-tags {
@@ -433,17 +461,20 @@
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
-		max-height: 52px;
+		height: 26px;
+		max-height: 26px;
 		overflow: hidden;
 	}
 
 	.tag {
 		font-size: 12px;
 		color: #fff;
-		padding: 4px 10px;
+		height: 22px;
+		line-height: 22px;
+		padding: 0 10px;
 		border-radius: 999px;
 		margin-right: 6px;
-		margin-bottom: 6px;
+		margin-bottom: 0;
 	}
 
 	.placeholder {
@@ -522,6 +553,13 @@
 		margin-top: 8px;
 	}
 
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
+	}
+
 	.save-btn {
 		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
 		color: #fff;
@@ -544,6 +582,14 @@
 		justify-content: center;
 		align-items: center;
 		z-index: 1000;
+	}
+
+	.selector-modal {
+		z-index: 1000;
+	}
+
+	.add-label-modal {
+		z-index: 1010;
 	}
 
 	.modal-content {
@@ -570,6 +616,7 @@
 
 	.selector-body {
 		height: 420px;
+		max-height: 52vh;
 		margin-bottom: 12px;
 		padding-right: 8px;
 	}

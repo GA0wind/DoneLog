@@ -35,7 +35,8 @@
 				<view class="modal-body">
 					<view class="form-item">
 						<text class="label">标签名称</text>
-						<input class="input" v-model="labelName" placeholder="请输入标签名称" />
+						<input class="input" v-model="labelName" placeholder="请输入标签名称" confirm-type="done" @input="clearLabelError" @confirm="saveLabel" />
+						<text class="error-tip" v-if="labelError">{{labelError}}</text>
 					</view>
 					<view class="form-item">
 						<text class="label">标签颜色</text>
@@ -72,6 +73,7 @@
 	const isEdit = ref(false)
 	const editingLabelId = ref(0)
 	const labelName = ref('')
+	const labelError = ref('')
 	const labelColor = ref('#007AFF')
 
 	// 预设颜色选项
@@ -97,6 +99,7 @@
 	const showAddDialog = () => {
 		isEdit.value = false
 		labelName.value = ''
+		labelError.value = ''
 		labelColor.value = '#007AFF'
 		showModal.value = true
 	}
@@ -106,6 +109,7 @@
 		isEdit.value = true
 		editingLabelId.value = label.id
 		labelName.value = label.name
+		labelError.value = ''
 		labelColor.value = label.color
 		showModal.value = true
 	}
@@ -113,13 +117,31 @@
 	// 隐藏弹窗
 	const hideModal = () => {
 		showModal.value = false
+		labelError.value = ''
+	}
+
+	const clearLabelError = () => {
+		if (labelError.value) {
+			labelError.value = ''
+		}
 	}
 
 	// 保存标签
 	const saveLabel = () => {
-		if (!labelName.value.trim()) {
+		const normalizedName = labelName.value.trim()
+		if (!normalizedName) {
+			labelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
+				icon: 'none'
+			})
+			return
+		}
+
+		if (LabelManager.isLabelNameDuplicate(normalizedName, 'event', isEdit.value ? editingLabelId.value : 0)) {
+			labelError.value = '已存在同名标签'
+			uni.showToast({
+				title: '标签名称已存在',
 				icon: 'none'
 			})
 			return
@@ -131,14 +153,14 @@
 			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
 			const label: Label = {
 				id: editingLabelId.value,
-				name: labelName.value,
+				name: normalizedName,
 				color: labelColor.value,
 				sortOrder: currentLabel?.sortOrder || 0
 			}
 			success = LabelManager.updateLabel(label)
 		} else {
 			// 添加标签
-			success = LabelManager.addLabel(labelName.value, labelColor.value)
+			success = LabelManager.addLabel(normalizedName, labelColor.value)
 		}
 
 		if (success) {
@@ -149,8 +171,9 @@
 			hideModal()
 			loadLabels()
 		} else {
+			labelError.value = isEdit.value ? '修改失败，请稍后再试' : '添加失败，请稍后再试'
 			uni.showToast({
-				title: isEdit.value ? '修改失败或名称重复' : '添加失败或名称重复',
+				title: isEdit.value ? '修改失败' : '添加失败',
 				icon: 'none'
 			})
 		}
@@ -180,6 +203,12 @@
 			}
 		})
 	}
+
+	onLoad(() => {
+		uni.redirectTo({
+			url: '/pages/my/labels?kind=event'
+		})
+	})
 
 	// 页面显示时加载数据
 	onShow(() => {
@@ -338,6 +367,13 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
 	}
 
 	.color-options {

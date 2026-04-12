@@ -1,4 +1,4 @@
-import { StorageUtils, AccountEntry } from './storage.uts'
+import { StorageUtils, AccountEntry, BudgetSettings, LabelBudgetSetting } from './storage.uts'
 import { EventManager } from './eventManager.uts'
 import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
@@ -15,6 +15,23 @@ export type AccountOverview = {
   income: number
   expense: number
   count: number
+}
+
+export type BudgetOverview = {
+  monthlyExpenseBudget: number
+  usedAmount: number
+  remainingAmount: number
+  usedPercent: number
+  isOverBudget: boolean
+}
+
+export type LabelBudgetOverview = {
+  labelId: number
+  monthlyBudget: number
+  usedAmount: number
+  remainingAmount: number
+  usedPercent: number
+  isOverBudget: boolean
 }
 
 /**
@@ -105,6 +122,87 @@ export class AccountManager {
     const entries = StorageUtils.getAccountEntries()
     const end = dayStart + 24 * 60 * 60 * 1000 - 1
     return this.getOverviewByRange(entries, dayStart, end)
+  }
+
+  static getBudgetSettings(): BudgetSettings {
+    return StorageUtils.getBudgetSettings()
+  }
+
+  static saveMonthlyExpenseBudget(amount: number): boolean {
+    const settings = StorageUtils.getBudgetSettings()
+    return StorageUtils.saveBudgetSettings({
+      ...settings,
+      monthlyExpenseBudget: amount,
+      updateTime: Date.now()
+    })
+  }
+
+  static getLabelBudgetAmount(labelId: number): number {
+    const settings = StorageUtils.getBudgetSettings()
+    const item = settings.labelMonthlyBudgets.find(budget => budget.labelId === labelId)
+    return item ? item.amount : 0
+  }
+
+  static saveLabelMonthlyBudget(labelId: number, amount: number): boolean {
+    if (labelId <= 0) return false
+
+    const settings = StorageUtils.getBudgetSettings()
+    const budgets: LabelBudgetSetting[] = settings.labelMonthlyBudgets
+      .filter(item => item.labelId !== labelId)
+
+    if (amount > 0) {
+      budgets.push({
+        labelId,
+        amount
+      })
+    }
+
+    budgets.sort((a, b) => a.labelId - b.labelId)
+
+    return StorageUtils.saveBudgetSettings({
+      ...settings,
+      labelMonthlyBudgets: budgets,
+      updateTime: Date.now()
+    })
+  }
+
+  static getMonthlyBudgetOverview(): BudgetOverview {
+    const settings = StorageUtils.getBudgetSettings()
+    const overview = this.getOverview('month')
+    const budget = settings.monthlyExpenseBudget
+    const remaining = budget - overview.expense
+    const percent = budget > 0 ? Math.min(100, Math.round(overview.expense / budget * 100)) : 0
+
+    return {
+      monthlyExpenseBudget: budget,
+      usedAmount: overview.expense,
+      remainingAmount: remaining,
+      usedPercent: percent,
+      isOverBudget: budget > 0 && remaining < 0
+    }
+  }
+
+  static getMonthlyLabelBudgetOverviews(): LabelBudgetOverview[] {
+    const settings = StorageUtils.getBudgetSettings()
+    const stats = this.getStatsByLabelAndType('month', 'expense')
+
+    return settings.labelMonthlyBudgets
+      .filter(budget => budget.labelId > 0 && budget.amount > 0)
+      .map(budget => {
+        const stat = stats.find(item => item.labelId === budget.labelId)
+        const usedAmount = stat ? stat.totalAmount : 0
+        const remainingAmount = budget.amount - usedAmount
+        const usedPercent = budget.amount > 0 ? Math.min(100, Math.round(usedAmount / budget.amount * 100)) : 0
+
+        return {
+          labelId: budget.labelId,
+          monthlyBudget: budget.amount,
+          usedAmount,
+          remainingAmount,
+          usedPercent,
+          isOverBudget: remainingAmount < 0
+        }
+      })
   }
 
   private static getStatsByLabelFromEntries(

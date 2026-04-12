@@ -1,0 +1,388 @@
+<template>
+	<view class="container">
+		<view class="linked-card" v-if="linkedEvent">
+			<text class="linked-kicker">{{linkedEventCompleted ? '事件已完成' : '正在专注'}}</text>
+			<text class="linked-title">{{linkedEvent.name}}</text>
+			<text class="linked-desc">{{linkedEventCompleted ? '这个事件已经写入完成记录。' : '专注时间结束后会自动完成这个事件。'}}</text>
+		</view>
+
+		<view class="mode-row">
+			<view
+				class="mode-chip"
+				v-for="item in modeOptions"
+				:key="item.id"
+				:class="{ active: mode === item.id }"
+				@click="switchMode(item.id)"
+			>
+				<text>{{item.name}}</text>
+			</view>
+		</view>
+
+		<view class="timer-panel">
+			<text class="timer-kicker">{{modeTitle}}</text>
+			<text class="timer-text">{{timeText}}</text>
+			<view class="progress-track">
+				<view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
+			</view>
+			<text class="timer-desc">{{nextText}}</text>
+		</view>
+
+		<view class="action-row">
+			<button class="secondary-btn" @click="resetTimer">重置</button>
+			<button class="primary-btn" @click="toggleTimer">{{isRunning ? '暂停' : '开始'}}</button>
+			<button class="secondary-btn" @click="skipRound">跳过</button>
+		</view>
+
+		<view class="stats-card">
+			<view class="stats-item">
+				<text class="stats-value">{{completedFocusCount}}</text>
+				<text class="stats-label">已完成番茄</text>
+			</view>
+			<view class="stats-item">
+				<text class="stats-value">{{currentRoundText}}</text>
+				<text class="stats-label">当前节奏</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { EventManager } from '@/utils/eventManager.uts'
+	import { Event } from '@/utils/storage.uts'
+
+	type PomodoroMode = 'focus' | 'short' | 'long'
+	type PomodoroOption = {
+		id: PomodoroMode
+		name: string
+		minutes: number
+	}
+
+	const modeOptions: PomodoroOption[] = [
+		{ id: 'focus', name: '专注', minutes: 25 },
+		{ id: 'short', name: '短休息', minutes: 5 },
+		{ id: 'long', name: '长休息', minutes: 15 }
+	]
+
+	const mode = ref<PomodoroMode>('focus')
+	const remainingSeconds = ref(25 * 60)
+	const isRunning = ref(false)
+	const completedFocusCount = ref(0)
+	const linkedEventId = ref(0)
+	const linkedEvent = ref<Event | null>(null)
+	const linkedEventCompleted = ref(false)
+	let timerId = 0
+
+	const getDurationSeconds = (value: PomodoroMode): number => {
+		const option = modeOptions.find(item => item.id === value)
+		return (option?.minutes || 25) * 60
+	}
+
+	const currentDuration = computed(() => getDurationSeconds(mode.value))
+	const progressPercent = computed(() => {
+		const elapsed = currentDuration.value - remainingSeconds.value
+		return Math.max(0, Math.min(100, Math.round(elapsed / currentDuration.value * 100)))
+	})
+
+	const timeText = computed(() => {
+		const minutes = Math.floor(remainingSeconds.value / 60)
+		const seconds = remainingSeconds.value % 60
+		return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+	})
+
+	const modeTitle = computed(() => {
+		if (mode.value === 'short') return '短休息'
+		if (mode.value === 'long') return '长休息'
+		return '专注时间'
+	})
+
+	const currentRoundText = computed(() => {
+		const current = completedFocusCount.value % 4
+		return `${current}/4`
+	})
+
+	const nextText = computed(() => {
+		if (mode.value !== 'focus') return '休息结束后回到专注'
+		if ((completedFocusCount.value + 1) % 4 === 0) return '完成后进入长休息'
+		return '完成后进入短休息'
+	})
+
+	const stopTimer = () => {
+		if (timerId > 0) {
+			clearInterval(timerId)
+			timerId = 0
+		}
+		isRunning.value = false
+	}
+
+	const switchMode = (value: PomodoroMode) => {
+		stopTimer()
+		mode.value = value
+		remainingSeconds.value = getDurationSeconds(value)
+	}
+
+	const completeLinkedEvent = (): boolean => {
+		if (linkedEventId.value <= 0) return false
+
+		const event = EventManager.getEventById(linkedEventId.value)
+		if (!event || event.isTerminated) {
+			uni.showToast({ title: '事件不可操作', icon: 'none' })
+			return false
+		}
+
+		const success = EventManager.markEventComplete(linkedEventId.value)
+		if (!success) {
+			uni.showToast({ title: '事件已完成过', icon: 'none' })
+			return false
+		}
+
+		if (event.intervalDays < 0) {
+			EventManager.terminateEvent(linkedEventId.value)
+		}
+		linkedEvent.value = EventManager.getEventById(linkedEventId.value)
+		linkedEventCompleted.value = true
+		linkedEventId.value = 0
+		return true
+	}
+
+	const finishRound = (completeEvent: boolean) => {
+		stopTimer()
+		if (mode.value === 'focus') {
+			completedFocusCount.value += 1
+			const linkedCompleted = completeEvent && linkedEventId.value > 0 ? completeLinkedEvent() : false
+			const nextMode: PomodoroMode = completedFocusCount.value % 4 === 0 ? 'long' : 'short'
+			switchMode(nextMode)
+			uni.showToast({ title: linkedCompleted ? '事件已完成' : '专注完成', icon: 'success' })
+			return
+		}
+
+		switchMode('focus')
+		uni.showToast({ title: '休息结束', icon: 'success' })
+	}
+
+	const startTimer = () => {
+		if (isRunning.value) return
+		isRunning.value = true
+		timerId = setInterval(() => {
+			if (remainingSeconds.value <= 1) {
+				finishRound(true)
+				return
+			}
+			remainingSeconds.value -= 1
+		}, 1000)
+	}
+
+	const toggleTimer = () => {
+		if (isRunning.value) {
+			stopTimer()
+			return
+		}
+		startTimer()
+	}
+
+	const resetTimer = () => {
+		stopTimer()
+		remainingSeconds.value = currentDuration.value
+	}
+
+	const skipRound = () => {
+		finishRound(false)
+	}
+
+	onLoad((options: any) => {
+		if (options.eventId) {
+			linkedEventId.value = parseInt(options.eventId)
+			linkedEvent.value = EventManager.getEventById(linkedEventId.value)
+			const event = linkedEvent.value
+			if (event) {
+				const lastRecord = EventManager.getEventHistory(linkedEventId.value)[0]
+				linkedEventCompleted.value = EventManager.isCompletedOnDate(linkedEventId.value, Date.now())
+					|| EventManager.isFixedDateCompleted(event, lastRecord?.lastCompleteDate || null)
+			}
+		}
+
+		if (options.autoStart === '1' && !linkedEventCompleted.value) {
+			switchMode('focus')
+			startTimer()
+		}
+	})
+
+	onUnload(() => {
+		stopTimer()
+	})
+</script>
+
+<style>
+	.container {
+		min-height: 100vh;
+		background-color: #f4efe7;
+		padding: 16px;
+	}
+
+	.linked-card {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 16px;
+		margin-bottom: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
+	}
+
+	.linked-kicker {
+		font-size: 12px;
+		color: #1f7a72;
+		margin-bottom: 6px;
+	}
+
+	.linked-title {
+		display: block;
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.linked-desc {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #75828d;
+	}
+
+	.mode-row {
+		flex-direction: row;
+		background-color: #eadfd2;
+		border-radius: 24px;
+		padding: 4px;
+		margin-bottom: 16px;
+	}
+
+	.mode-chip {
+		flex: 1;
+		height: 40px;
+		line-height: 40px;
+		align-items: center;
+		justify-content: center;
+		border-radius: 20px;
+		background-color: #f7efe6;
+		margin-right: 6px;
+	}
+
+	.mode-chip:last-child {
+		margin-right: 0;
+	}
+
+	.mode-chip text {
+		font-size: 13px;
+		color: #4d5b67;
+	}
+
+	.mode-chip.active {
+		background-color: #1f7a72;
+	}
+
+	.mode-chip.active text {
+		color: #fff;
+	}
+
+	.timer-panel {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 26px 18px;
+		align-items: center;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
+		margin-bottom: 16px;
+	}
+
+	.timer-kicker {
+		font-size: 13px;
+		color: #1f7a72;
+		margin-bottom: 10px;
+	}
+
+	.timer-text {
+		font-size: 56px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 18px;
+	}
+
+	.progress-track {
+		width: 100%;
+		height: 10px;
+		border-radius: 5px;
+		background-color: #eadfd2;
+		overflow: hidden;
+		margin-bottom: 12px;
+	}
+
+	.progress-fill {
+		height: 10px;
+		border-radius: 5px;
+		background-color: #1f7a72;
+	}
+
+	.timer-desc {
+		font-size: 13px;
+		color: #75828d;
+	}
+
+	.action-row {
+		flex-direction: row;
+		margin-bottom: 16px;
+	}
+
+	.primary-btn,
+	.secondary-btn {
+		flex: 1;
+		height: 46px;
+		line-height: 46px;
+		border-radius: 23px;
+		font-size: 15px;
+		margin-right: 8px;
+	}
+
+	.primary-btn {
+		background-color: #1f7a72;
+		color: #fff;
+	}
+
+	.secondary-btn {
+		background-color: #f2ebe2;
+		color: #4d5b67;
+	}
+
+	.action-row button:last-child {
+		margin-right: 0;
+	}
+
+	.stats-card {
+		flex-direction: row;
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.stats-item {
+		flex: 1;
+		align-items: center;
+	}
+
+	.stats-value {
+		font-size: 22px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.stats-label {
+		font-size: 12px;
+		color: #7b8791;
+	}
+</style>

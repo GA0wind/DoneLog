@@ -16,6 +16,11 @@ export type EventWidgetItem = {
   priority: 'today' | 'overdue' | 'upcoming'
 }
 
+export type EventLatestCompletion = {
+  eventId: number
+  lastCompleteDate: number
+}
+
 /**
  * 事件管理工具类
  */
@@ -110,6 +115,7 @@ export class EventManager {
   static getSortedEvents(showTerminated: boolean = false, labelId: number | null = null): Event[] {
     const events = StorageUtils.getEvents()
     const records = StorageUtils.getCompletionRecords()
+    const latestRecordByEventId = this.getLatestRecordMap(records)
 
     // 筛选事件
     let filteredEvents = events.filter(event => {
@@ -131,12 +137,8 @@ export class EventManager {
 
     // 排序：今天要做的事优先，然后是已过去天数从大到小，最后是未来天数从小到大
     filteredEvents.sort((a, b) => {
-      const lastRecordA = records
-        .filter(r => r.eventId === a.id)
-        .sort((x, y) => y.lastCompleteDate - x.lastCompleteDate)[0]
-      const lastRecordB = records
-        .filter(r => r.eventId === b.id)
-        .sort((x, y) => y.lastCompleteDate - x.lastCompleteDate)[0]
+      const lastRecordA = latestRecordByEventId.get(a.id)
+      const lastRecordB = latestRecordByEventId.get(b.id)
 
       const daysA = this.calculateDaysUntilDue(a, lastRecordA?.lastCompleteDate || null)
       const daysB = this.calculateDaysUntilDue(b, lastRecordB?.lastCompleteDate || null)
@@ -171,11 +173,10 @@ export class EventManager {
   static getTodayEvents(): Event[] {
     const events = this.getSortedEvents(false)
     const records = StorageUtils.getCompletionRecords()
+    const latestRecordByEventId = this.getLatestRecordMap(records)
 
     return events.filter(event => {
-      const lastRecord = records
-        .filter(r => r.eventId === event.id)
-        .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)[0]
+      const lastRecord = latestRecordByEventId.get(event.id)
 
       const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
       return daysUntilDue === 0
@@ -185,14 +186,14 @@ export class EventManager {
   static getWidgetSnapshot(limit: number = 4): EventWidgetItem[] {
     const events = this.getSortedEvents(false)
     const records = StorageUtils.getCompletionRecords()
+    const latestRecordByEventId = this.getLatestRecordMap(records)
+    const now = Date.now()
     const items: EventWidgetItem[] = []
 
     for (let i = 0; i < events.length; i++) {
       const event = events[i]
-      const lastRecord = records
-        .filter(r => r.eventId === event.id)
-        .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)[0]
-      if (this.isCompletedOnDate(event.id, Date.now())) {
+      const lastRecord = latestRecordByEventId.get(event.id)
+      if (this.hasCompletionOnDate(records, event.id, now)) {
         continue
       }
       if (this.isFixedDateCompleted(event, lastRecord?.lastCompleteDate || null)) {
@@ -240,6 +241,35 @@ export class EventManager {
     return records.some(record => this.getStartOfDay(record.lastCompleteDate) === targetDay)
   }
 
+  static getLatestCompletionDates(): EventLatestCompletion[] {
+    const records = StorageUtils.getCompletionRecords()
+    const latestDates = new Map<number, EventLatestCompletion>()
+    records.forEach(record => {
+      const current = latestDates.get(record.eventId)
+      if (!current || record.lastCompleteDate > current.lastCompleteDate) {
+        latestDates.set(record.eventId, {
+          eventId: record.eventId,
+          lastCompleteDate: record.lastCompleteDate
+        })
+      }
+    })
+    return Array.from(latestDates.values())
+  }
+
+  static getCompletedEventIdsOnDate(timestamp: number): number[] {
+    const records = StorageUtils.getCompletionRecords()
+    const targetDay = this.getStartOfDay(timestamp)
+    const eventIds: number[] = []
+
+    records.forEach(record => {
+      if (this.getStartOfDay(record.lastCompleteDate) === targetDay && !eventIds.includes(record.eventId)) {
+        eventIds.push(record.eventId)
+      }
+    })
+
+    return eventIds
+  }
+
   /**
    * 添加事件
    */
@@ -268,6 +298,21 @@ export class EventManager {
       return newEvent.id
     }
     return 0
+  }
+
+  static duplicateEvent(eventId: number): number {
+    const source = this.getEventById(eventId)
+    if (!source) return 0
+
+    return this.addEventAndGetId({
+      name: `${source.name} 副本`,
+      labelIdList: source.labelIdList,
+      intervalDays: source.intervalDays,
+      nextDueDate: source.nextDueDate,
+      remark: source.remark,
+      isTerminated: false,
+      terminatedAt: 0
+    })
   }
 
   /**
@@ -432,6 +477,24 @@ export class EventManager {
       .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)
   }
 
+  private static getLatestRecordMap(records: CompletionRecord[]): Map<number, CompletionRecord> {
+    const latestRecordByEventId = new Map<number, CompletionRecord>()
+    records.forEach(record => {
+      const current = latestRecordByEventId.get(record.eventId)
+      if (!current || record.lastCompleteDate > current.lastCompleteDate) {
+        latestRecordByEventId.set(record.eventId, record)
+      }
+    })
+    return latestRecordByEventId
+  }
+
+  private static hasCompletionOnDate(records: CompletionRecord[], eventId: number, timestamp: number): boolean {
+    const targetDay = this.getStartOfDay(timestamp)
+    return records.some(record => {
+      return record.eventId === eventId && this.getStartOfDay(record.lastCompleteDate) === targetDay
+    })
+  }
+
   private static getStartOfDay(timestamp: number): number {
     const date = new Date(timestamp)
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
@@ -484,7 +547,9 @@ export class EventManager {
     })
 
     if (!changed || StorageUtils.saveEvents(migratedEvents)) {
+      const meta = StorageUtils.getAppMeta()
       StorageUtils.saveAppMeta({
+        ...meta,
         intervalSemanticsVersion: this.intervalSemanticsVersion
       })
       this.syncWidgetSnapshot()
