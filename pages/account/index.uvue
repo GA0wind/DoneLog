@@ -15,6 +15,58 @@
 			</view>
 		</view>
 
+		<view class="budget-card">
+			<view class="budget-header">
+				<view>
+					<text class="budget-title">本月预算</text>
+					<text class="budget-desc">{{monthlyBudget > 0 ? budgetStatusText : '设置后会自动跟踪本月支出'}}</text>
+				</view>
+				<button class="budget-action" @click="openBudgetModal">{{monthlyBudget > 0 ? '调整' : '设置'}}</button>
+			</view>
+			<view v-if="monthlyBudget > 0">
+				<view class="budget-numbers">
+					<text class="budget-used">已用 ¥{{monthOverview.expense.toFixed(2)}}</text>
+					<text class="budget-total">预算 ¥{{monthlyBudget.toFixed(2)}}</text>
+				</view>
+				<view class="budget-bar">
+					<view class="budget-progress" :class="{ over: budgetRemaining < 0 }" :style="{ width: budgetUsedPercent + '%' }"></view>
+				</view>
+			</view>
+			<view class="label-budget-section">
+				<view class="label-budget-header">
+					<view>
+						<text class="label-budget-title">标签预算</text>
+						<text class="label-budget-desc">按餐饮、交通等标签拆分本月支出</text>
+					</view>
+					<button class="label-budget-action" @click="openLabelBudgetModal(0)">设置</button>
+				</view>
+				<view v-if="visibleLabelBudgetOverviews.length > 0">
+					<view
+						class="label-budget-item"
+						v-for="item in visibleLabelBudgetOverviews"
+						:key="item.labelId"
+						@click="openLabelBudgetModal(item.labelId)"
+					>
+						<view class="label-budget-top">
+							<view class="label-budget-name-wrap">
+								<view class="label-budget-dot" :style="{ backgroundColor: getLabelColor(item.labelId) }"></view>
+								<text class="label-budget-name">{{getLabelName(item.labelId)}}</text>
+							</view>
+							<text class="label-budget-status" :class="{ over: item.isOverBudget }">{{getLabelBudgetStatus(item)}}</text>
+						</view>
+						<view class="budget-bar slim">
+							<view class="budget-progress" :class="{ over: item.isOverBudget }" :style="{ width: item.usedPercent + '%' }"></view>
+						</view>
+						<view class="label-budget-meta">
+							<text>已用 ¥{{item.usedAmount.toFixed(2)}}</text>
+							<text>预算 ¥{{item.monthlyBudget.toFixed(2)}}</text>
+						</view>
+					</view>
+				</view>
+				<text class="label-budget-empty" v-if="visibleLabelBudgetOverviews.length === 0">还没有设置标签预算。</text>
+			</view>
+		</view>
+
 		<view class="list-card">
 			<view class="entry-item" v-for="entry in entries" :key="entry.id" @click="editEntry(entry)">
 				<view class="entry-left">
@@ -73,7 +125,7 @@
 								<text class="placeholder" v-if="formLabelIds.length === 0">请选择标签</text>
 							</view>
 						</view>
-						<button class="mini-add-btn" @click="showAddLabelModal = true">新增标签</button>
+						<button class="mini-add-btn" @click.stop="openAddLabel">新增标签</button>
 					</view>
 				</view>
 
@@ -101,7 +153,8 @@
 				<text class="modal-title">新增记账标签</text>
 				<view class="form-item">
 					<text class="label">标签名称</text>
-					<input class="input" v-model="newLabelName" placeholder="请输入标签名称" />
+					<input class="input" v-model="newLabelName" placeholder="请输入标签名称" confirm-type="done" @input="clearNewLabelError" @confirm="addAccountLabel" />
+					<text class="error-tip" v-if="newLabelError">{{newLabelError}}</text>
 				</view>
 				<view class="form-item">
 					<text class="label">标签颜色</text>
@@ -112,15 +165,15 @@
 							:key="color"
 							:class="{ selected: newLabelColor === color }"
 							:style="{ backgroundColor: color }"
-							@click="newLabelColor = color"
+							@click.stop="newLabelColor = color"
 						>
 							<text v-if="newLabelColor === color" class="color-check">✓</text>
 						</view>
 					</view>
 				</view>
 				<view class="modal-footer">
-					<button class="cancel-btn" @click="hideAddLabel">取消</button>
-					<button class="confirm-btn" @click="addAccountLabel">确定</button>
+					<button class="cancel-btn" @click.stop="hideAddLabel">取消</button>
+					<button class="confirm-btn" @click.stop="addAccountLabel">确定</button>
 				</view>
 			</view>
 		</view>
@@ -142,21 +195,61 @@
 				</view>
 			</view>
 		</view>
+
+		<view class="modal" v-if="showBudgetModal" @click="hideBudgetModal">
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">设置月预算</text>
+				<view class="form-item">
+					<text class="label">每月支出预算</text>
+					<input class="input" type="digit" v-model="budgetAmount" placeholder="例如：3000" confirm-type="done" @input="clearBudgetError" @confirm="saveBudget" />
+					<text class="error-tip" v-if="budgetError">{{budgetError}}</text>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="clearBudget">清空</button>
+					<button class="confirm-btn" @click.stop="saveBudget">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showLabelBudgetModal" @click="hideLabelBudgetModal">
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">设置标签预算</text>
+				<view class="form-item">
+					<text class="label">预算标签</text>
+					<picker mode="selector" :range="labels" range-key="name" :value="selectedBudgetLabelIndex" @change="onLabelBudgetChange">
+						<view class="picker"><text>{{selectedBudgetLabelName}}</text></view>
+					</picker>
+				</view>
+				<view class="form-item">
+					<text class="label">每月支出预算</text>
+					<input class="input" type="digit" v-model="labelBudgetAmount" placeholder="例如：800" confirm-type="done" @input="clearLabelBudgetError" @confirm="saveLabelBudget" />
+					<text class="error-tip" v-if="labelBudgetError">{{labelBudgetError}}</text>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="clearLabelBudget">清空</button>
+					<button class="confirm-btn" @click.stop="saveLabelBudget">保存</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-	import { AccountManager } from '@/utils/accountManager.uts'
+	import { AccountManager, LabelBudgetOverview } from '@/utils/accountManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountEntry, Label } from '@/utils/storage.uts'
 
 	const entries = ref<AccountEntry[]>([])
 	const labels = ref<Label[]>([])
 	const monthOverview = ref({ income: 0, expense: 0, count: 0 })
+	const monthlyBudget = ref(0)
+	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
 
 	const showModal = ref(false)
 	const showAddLabelModal = ref(false)
 	const showLabelSelector = ref(false)
+	const showBudgetModal = ref(false)
+	const showLabelBudgetModal = ref(false)
 	const editingId = ref(0)
 	const formType = ref<'expense' | 'income'>('expense')
 	const formAmount = ref('')
@@ -164,7 +257,13 @@
 	const formDate = ref('')
 	const formRemark = ref('')
 	const newLabelName = ref('')
+	const newLabelError = ref('')
 	const newLabelColor = ref('#1F7A72')
+	const budgetAmount = ref('')
+	const budgetError = ref('')
+	const selectedBudgetLabelId = ref(0)
+	const labelBudgetAmount = ref('')
+	const labelBudgetError = ref('')
 	const colorOptions = [
 		'#1F7A72',
 		'#2A9D8F',
@@ -189,7 +288,36 @@
 		entries.value = AccountManager.getSortedEntries()
 		labels.value = LabelManager.getSortedLabels('account')
 		monthOverview.value = AccountManager.getOverview('month')
+		monthlyBudget.value = AccountManager.getBudgetSettings().monthlyExpenseBudget
+		labelBudgetOverviews.value = AccountManager.getMonthlyLabelBudgetOverviews()
 	}
+
+	const budgetRemaining = computed(() => monthlyBudget.value - monthOverview.value.expense)
+	const budgetUsedPercent = computed(() => {
+		if (monthlyBudget.value <= 0) return 0
+		return Math.min(100, Math.round(monthOverview.value.expense / monthlyBudget.value * 100))
+	})
+	const budgetStatusText = computed(() => {
+		if (monthlyBudget.value <= 0) return '还没有设置预算'
+		if (budgetRemaining.value < 0) return `已超出 ¥${Math.abs(budgetRemaining.value).toFixed(2)}`
+		return `还可用 ¥${budgetRemaining.value.toFixed(2)}`
+	})
+
+	const visibleLabelBudgetOverviews = computed(() => {
+		return labelBudgetOverviews.value
+			.filter(item => labels.value.some(label => label.id === item.labelId))
+			.sort((a, b) => getLabelSortOrder(a.labelId) - getLabelSortOrder(b.labelId))
+	})
+
+	const selectedBudgetLabelName = computed(() => {
+		const label = labels.value.find(item => item.id === selectedBudgetLabelId.value)
+		return label ? label.name : '请选择标签'
+	})
+
+	const selectedBudgetLabelIndex = computed(() => {
+		const index = labels.value.findIndex(item => item.id === selectedBudgetLabelId.value)
+		return index >= 0 ? index : 0
+	})
 
 	const resetForm = () => {
 		editingId.value = 0
@@ -221,10 +349,140 @@
 		showModal.value = false
 		showLabelSelector.value = false
 		showAddLabelModal.value = false
+		newLabelError.value = ''
+	}
+
+	const openBudgetModal = () => {
+		budgetAmount.value = monthlyBudget.value > 0 ? String(monthlyBudget.value) : ''
+		budgetError.value = ''
+		showBudgetModal.value = true
+	}
+
+	const hideBudgetModal = () => {
+		showBudgetModal.value = false
+		budgetError.value = ''
+	}
+
+	const syncLabelBudgetInput = () => {
+		const amount = AccountManager.getLabelBudgetAmount(selectedBudgetLabelId.value)
+		labelBudgetAmount.value = amount > 0 ? String(amount) : ''
+	}
+
+	const openLabelBudgetModal = (labelId: number) => {
+		if (labels.value.length === 0) {
+			uni.showToast({ title: '请先新增记账标签', icon: 'none' })
+			return
+		}
+
+		selectedBudgetLabelId.value = labelId > 0 ? labelId : labels.value[0].id
+		labelBudgetError.value = ''
+		syncLabelBudgetInput()
+		showLabelBudgetModal.value = true
+	}
+
+	const hideLabelBudgetModal = () => {
+		showLabelBudgetModal.value = false
+		labelBudgetError.value = ''
+	}
+
+	const clearBudgetError = () => {
+		if (budgetError.value) {
+			budgetError.value = ''
+		}
+	}
+
+	const clearLabelBudgetError = () => {
+		if (labelBudgetError.value) {
+			labelBudgetError.value = ''
+		}
+	}
+
+	const onLabelBudgetChange = (e: any) => {
+		const index = e.detail.value
+		if (index < 0 || index >= labels.value.length) return
+		selectedBudgetLabelId.value = labels.value[index].id
+		labelBudgetError.value = ''
+		syncLabelBudgetInput()
+	}
+
+	const saveBudget = () => {
+		const amount = parseFloat(budgetAmount.value)
+		if (Number.isNaN(amount) || amount <= 0) {
+			budgetError.value = '请输入大于 0 的预算金额'
+			return
+		}
+
+		if (AccountManager.saveMonthlyExpenseBudget(amount)) {
+			hideBudgetModal()
+			loadData()
+			uni.showToast({ title: '预算已保存', icon: 'success' })
+		} else {
+			budgetError.value = '保存失败，请稍后再试'
+		}
+	}
+
+	const clearBudget = () => {
+		if (AccountManager.saveMonthlyExpenseBudget(0)) {
+			hideBudgetModal()
+			loadData()
+			uni.showToast({ title: '预算已清空', icon: 'success' })
+		} else {
+			budgetError.value = '清空失败，请稍后再试'
+		}
+	}
+
+	const saveLabelBudget = () => {
+		if (selectedBudgetLabelId.value <= 0) {
+			labelBudgetError.value = '请选择标签'
+			return
+		}
+
+		const amount = parseFloat(labelBudgetAmount.value)
+		if (Number.isNaN(amount) || amount <= 0) {
+			labelBudgetError.value = '请输入大于 0 的预算金额'
+			return
+		}
+
+		if (AccountManager.saveLabelMonthlyBudget(selectedBudgetLabelId.value, amount)) {
+			hideLabelBudgetModal()
+			loadData()
+			uni.showToast({ title: '标签预算已保存', icon: 'success' })
+		} else {
+			labelBudgetError.value = '保存失败，请稍后再试'
+		}
+	}
+
+	const clearLabelBudget = () => {
+		if (selectedBudgetLabelId.value <= 0) {
+			labelBudgetError.value = '请选择标签'
+			return
+		}
+
+		if (AccountManager.saveLabelMonthlyBudget(selectedBudgetLabelId.value, 0)) {
+			hideLabelBudgetModal()
+			loadData()
+			uni.showToast({ title: '标签预算已清空', icon: 'success' })
+		} else {
+			labelBudgetError.value = '清空失败，请稍后再试'
+		}
 	}
 
 	const hideAddLabel = () => {
 		showAddLabelModal.value = false
+		newLabelError.value = ''
+	}
+
+	const openAddLabel = () => {
+		newLabelName.value = ''
+		newLabelError.value = ''
+		newLabelColor.value = '#1F7A72'
+		showAddLabelModal.value = true
+	}
+
+	const clearNewLabelError = () => {
+		if (newLabelError.value) {
+			newLabelError.value = ''
+		}
 	}
 
 	const onTypeChange = (e: any) => {
@@ -253,25 +511,39 @@
 	}
 
 	const addAccountLabel = () => {
-		if (!newLabelName.value.trim()) {
+		const createdName = newLabelName.value.trim()
+		if (!createdName) {
+			newLabelError.value = '请输入标签名称'
 			uni.showToast({ title: '请输入标签名称', icon: 'none' })
 			return
 		}
 
-		const success = LabelManager.addLabel(newLabelName.value, newLabelColor.value, 'account')
+		const existingLabel = LabelManager.getLabelByName(createdName, 'account')
+		if (existingLabel) {
+			if (!formLabelIds.value.includes(existingLabel.id)) {
+				formLabelIds.value.push(existingLabel.id)
+			}
+			newLabelError.value = '已存在同名标签，已为你选中'
+			uni.showToast({ title: '标签已存在，已选中', icon: 'none' })
+			return
+		}
+
+		const success = LabelManager.addLabel(createdName, newLabelColor.value, 'account')
 		if (!success) {
-			uni.showToast({ title: '添加失败或名称重复', icon: 'none' })
+			newLabelError.value = '添加失败，请稍后再试'
+			uni.showToast({ title: '添加失败', icon: 'none' })
 			return
 		}
 
 		labels.value = LabelManager.getSortedLabels('account')
-		const created = labels.value.find(item => item.name === newLabelName.value.trim())
+		const created = labels.value.find(item => item.name === createdName)
 		if (created) {
 			if (!formLabelIds.value.includes(created.id)) {
 				formLabelIds.value.push(created.id)
 			}
 		}
 		newLabelName.value = ''
+		newLabelError.value = ''
 		newLabelColor.value = '#1F7A72'
 		showAddLabelModal.value = false
 		uni.showToast({ title: '添加成功', icon: 'success' })
@@ -333,6 +605,16 @@
 	const getLabelColor = (labelId: number): string => {
 		const label = labels.value.find(item => item.id === labelId)
 		return label?.color || '#B7A995'
+	}
+
+	const getLabelSortOrder = (labelId: number): number => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label ? label.sortOrder : 9999
+	}
+
+	const getLabelBudgetStatus = (item: LabelBudgetOverview): string => {
+		if (item.isOverBudget) return `超出 ¥${Math.abs(item.remainingAmount).toFixed(2)}`
+		return `剩余 ¥${item.remainingAmount.toFixed(2)}`
 	}
 
 	const getEntryLabelNames = (entry: AccountEntry): string => {
@@ -398,6 +680,188 @@
 
 	.summary-label {
 		font-size: 12px;
+		color: #7b8791;
+	}
+
+	.budget-card {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 16px;
+		margin-bottom: 14px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+	}
+
+	.budget-header {
+		flex-direction: row;
+		align-items: flex-start;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.budget-title {
+		display: block;
+		font-size: 16px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.budget-desc {
+		font-size: 12px;
+		color: #7b8791;
+	}
+
+	.budget-action {
+		height: 34px;
+		line-height: 34px;
+		padding: 0 14px;
+		border-radius: 17px;
+		background-color: #1f7a72;
+		color: #fff;
+		font-size: 13px;
+		flex-shrink: 0;
+	}
+
+	.budget-numbers {
+		flex-direction: row;
+		justify-content: space-between;
+		margin-bottom: 8px;
+	}
+
+	.budget-used,
+	.budget-total {
+		font-size: 12px;
+		color: #4d5b67;
+	}
+
+	.budget-bar {
+		height: 8px;
+		border-radius: 4px;
+		background-color: #eadfd2;
+		overflow: hidden;
+	}
+
+	.budget-progress {
+		height: 8px;
+		border-radius: 4px;
+		background-color: #1f7a72;
+	}
+
+	.budget-progress.over {
+		background-color: #e07a5f;
+	}
+
+	.label-budget-section {
+		margin-top: 16px;
+		padding-top: 14px;
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #efe3d7;
+	}
+
+	.label-budget-header {
+		flex-direction: row;
+		align-items: flex-start;
+		justify-content: space-between;
+		margin-bottom: 10px;
+	}
+
+	.label-budget-title {
+		display: block;
+		font-size: 15px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.label-budget-desc,
+	.label-budget-empty {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #7b8791;
+	}
+
+	.label-budget-action {
+		height: 32px;
+		line-height: 32px;
+		padding: 0 12px;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		font-size: 12px;
+		flex-shrink: 0;
+	}
+
+	.label-budget-item {
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 12px;
+		margin-bottom: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.label-budget-top,
+	.label-budget-meta,
+	.label-budget-name-wrap {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.label-budget-top,
+	.label-budget-meta {
+		justify-content: space-between;
+	}
+
+	.label-budget-name-wrap {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.label-budget-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 5px;
+		margin-right: 8px;
+		flex-shrink: 0;
+	}
+
+	.label-budget-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: #24323a;
+		flex: 1;
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.label-budget-status {
+		font-size: 12px;
+		color: #1f7a72;
+		margin-left: 8px;
+	}
+
+	.label-budget-status.over {
+		color: #c45d42;
+	}
+
+	.budget-bar.slim {
+		height: 6px;
+		border-radius: 3px;
+		margin: 8px 0;
+	}
+
+	.budget-bar.slim .budget-progress {
+		height: 6px;
+		border-radius: 3px;
+	}
+
+	.label-budget-meta text {
+		font-size: 11px;
 		color: #7b8791;
 	}
 
@@ -661,6 +1125,13 @@
 	.picker {
 		height: 44px;
 		justify-content: center;
+	}
+
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
 	}
 
 	.textarea {

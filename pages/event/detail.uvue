@@ -45,6 +45,8 @@
 
 			<view class="event-actions">
 				<button class="action-btn edit-btn" @click="goToEdit">编辑</button>
+				<button class="action-btn duplicate-btn" @click="duplicateEvent">复制</button>
+				<button class="action-btn start-btn" v-if="canComplete" @click="startPomodoro">开始</button>
 				<button class="action-btn complete-btn" v-if="canComplete" @click="markComplete">完成</button>
 			</view>
 		</view>
@@ -175,6 +177,33 @@
 	const goToEdit = () => {
 		uni.navigateTo({
 			url: `/pages/event/edit?id=${eventId.value}`
+		})
+	}
+
+	const duplicateEvent = () => {
+		const newEventId = EventManager.duplicateEvent(eventId.value)
+		if (newEventId <= 0) {
+			uni.showToast({
+				title: '复制失败',
+				icon: 'none'
+			})
+			return
+		}
+
+		uni.showToast({
+			title: '已复制',
+			icon: 'success'
+		})
+		setTimeout(() => {
+			uni.navigateTo({
+				url: `/pages/event/edit?id=${newEventId}`
+			})
+		}, 800)
+	}
+
+	const startPomodoro = () => {
+		uni.navigateTo({
+			url: `/pages/pomodoro/index?eventId=${eventId.value}&autoStart=1`
 		})
 	}
 
@@ -343,13 +372,27 @@
 		background-color: #fffdf9;
 		border: 1px solid #e7ddd2;
 		color: #4d5b67;
-		margin-right: 10px;
+		margin-right: 8px;
+	}
+
+	.duplicate-btn {
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		margin-left: 4px;
+		margin-right: 4px;
+	}
+
+	.start-btn {
+		background-color: #5d7fa3;
+		color: #fff;
+		margin-left: 4px;
+		margin-right: 4px;
 	}
 
 	.complete-btn {
 		background-color: #1f7a72;
 		color: #fff;
-		margin-left: 10px;
+		margin-left: 8px;
 		box-shadow: 0 12px 22px rgba(31, 122, 114, 0.18);
 	}
 

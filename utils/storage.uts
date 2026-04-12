@@ -8,6 +8,7 @@ export class StorageUtils {
   static readonly EVENT_LABELS_KEY = 'donelog_event_labels'
   static readonly ACCOUNT_LABELS_KEY = 'donelog_account_labels'
   static readonly ACCOUNT_ENTRIES_KEY = 'donelog_account_entries'
+  static readonly BUDGET_SETTINGS_KEY = 'donelog_budget_settings'
   static readonly LEGACY_LABELS_KEY = 'donelog_labels'
   static readonly APP_META_KEY = 'donelog_app_meta'
 
@@ -171,20 +172,65 @@ export class StorageUtils {
     }
   }
 
+  static getBudgetSettings(): BudgetSettings {
+    try {
+      const data = uni.getStorageSync(this.BUDGET_SETTINGS_KEY)
+      if (!data) {
+        return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
+      }
+
+      const parsed = JSON.parse(data)
+      if (!parsed) {
+        return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
+      }
+
+      const labelMonthlyBudgets: LabelBudgetSetting[] = Array.isArray(parsed.labelMonthlyBudgets)
+        ? (parsed.labelMonthlyBudgets as any[])
+          .map((item: any) => ({
+            labelId: item.labelId != null ? item.labelId : 0,
+            amount: item.amount != null ? item.amount : 0
+          }))
+          .filter((item: LabelBudgetSetting) => item.labelId > 0 && item.amount > 0)
+        : []
+
+      return {
+        monthlyExpenseBudget: parsed.monthlyExpenseBudget != null ? parsed.monthlyExpenseBudget : 0,
+        labelMonthlyBudgets,
+        updateTime: parsed.updateTime != null ? parsed.updateTime : 0
+      }
+    } catch (e) {
+      console.error('获取预算设置失败', e)
+      return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
+    }
+  }
+
+  static saveBudgetSettings(settings: BudgetSettings): boolean {
+    try {
+      uni.setStorageSync(this.BUDGET_SETTINGS_KEY, JSON.stringify(settings))
+      return true
+    } catch (e) {
+      console.error('保存预算设置失败', e)
+      return false
+    }
+  }
+
   static getAppMeta(): AppMeta {
     try {
       const data = uni.getStorageSync(this.APP_META_KEY)
       if (!data) {
-        return { intervalSemanticsVersion: 0 }
+        return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
       }
       const parsed = JSON.parse(data)
-      if (parsed && parsed.intervalSemanticsVersion != null) {
-        return parsed as AppMeta
+      if (parsed) {
+        return {
+          intervalSemanticsVersion: parsed.intervalSemanticsVersion != null ? parsed.intervalSemanticsVersion : 0,
+          defaultLabelsVersion: parsed.defaultLabelsVersion != null ? parsed.defaultLabelsVersion : 0
+        }
       }
-      return { intervalSemanticsVersion: 0 }
+      return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
     } catch (e) {
       console.error('获取应用元数据失败', e)
-      return { intervalSemanticsVersion: 0 }
+      return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
     }
   }
 
@@ -194,6 +240,66 @@ export class StorageUtils {
       return true
     } catch (e) {
       console.error('保存应用元数据失败', e)
+      return false
+    }
+  }
+
+  static exportData(): string {
+    return JSON.stringify({
+      version: 1,
+      exportedAt: Date.now(),
+      events: this.getEvents(),
+      completionRecords: this.getCompletionRecords(),
+      eventLabels: this.getEventLabels(),
+      accountLabels: this.getAccountLabels(),
+      accountEntries: this.getAccountEntries(),
+      budgetSettings: this.getBudgetSettings(),
+      appMeta: this.getAppMeta()
+    })
+  }
+
+  static importData(payload: string): boolean {
+    try {
+      const parsed = JSON.parse(payload)
+      if (!parsed) {
+        return false
+      }
+
+      const events = Array.isArray(parsed.events) ? parsed.events as Event[] : []
+      const completionRecords = Array.isArray(parsed.completionRecords) ? parsed.completionRecords as CompletionRecord[] : []
+      const eventLabels = Array.isArray(parsed.eventLabels) ? parsed.eventLabels as Label[] : []
+      const accountLabels = Array.isArray(parsed.accountLabels) ? parsed.accountLabels as Label[] : []
+      const accountEntries = Array.isArray(parsed.accountEntries) ? parsed.accountEntries as AccountEntry[] : []
+      const budgetSettings = parsed.budgetSettings
+        ? {
+          monthlyExpenseBudget: parsed.budgetSettings.monthlyExpenseBudget != null ? parsed.budgetSettings.monthlyExpenseBudget : 0,
+          labelMonthlyBudgets: Array.isArray(parsed.budgetSettings.labelMonthlyBudgets)
+            ? (parsed.budgetSettings.labelMonthlyBudgets as any[])
+              .map((item: any) => ({
+                labelId: item.labelId != null ? item.labelId : 0,
+                amount: item.amount != null ? item.amount : 0
+              }))
+              .filter((item: LabelBudgetSetting) => item.labelId > 0 && item.amount > 0)
+            : [],
+          updateTime: parsed.budgetSettings.updateTime != null ? parsed.budgetSettings.updateTime : 0
+        }
+        : { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
+      const appMeta = parsed.appMeta
+        ? {
+          intervalSemanticsVersion: parsed.appMeta.intervalSemanticsVersion != null ? parsed.appMeta.intervalSemanticsVersion : 0,
+          defaultLabelsVersion: parsed.appMeta.defaultLabelsVersion != null ? parsed.appMeta.defaultLabelsVersion : 0
+        }
+        : { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
+
+      return this.saveEvents(events)
+        && this.saveCompletionRecords(completionRecords)
+        && this.saveEventLabels(eventLabels)
+        && this.saveAccountLabels(accountLabels)
+        && this.saveAccountEntries(accountEntries)
+        && this.saveBudgetSettings(budgetSettings)
+        && this.saveAppMeta(appMeta)
+    } catch (e) {
+      console.error('导入备份失败', e)
       return false
     }
   }
@@ -249,6 +355,18 @@ export type AccountEntry = {
   updateTime: number
 }
 
+export type LabelBudgetSetting = {
+  labelId: number
+  amount: number
+}
+
+export type BudgetSettings = {
+  monthlyExpenseBudget: number
+  labelMonthlyBudgets: LabelBudgetSetting[]
+  updateTime: number
+}
+
 export type AppMeta = {
   intervalSemanticsVersion: number
+  defaultLabelsVersion: number
 }

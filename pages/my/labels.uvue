@@ -14,6 +14,7 @@
 				<view class="actions">
 					<button class="sort-btn" :disabled="label.sortOrder === 1" @click.stop="moveUp(label)">↑</button>
 					<button class="sort-btn" :disabled="label.sortOrder === labels.length" @click.stop="moveDown(label)">↓</button>
+					<button class="merge-btn" :disabled="labels.length < 2" @click.stop="showMergeDialog(label)">并</button>
 					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删</button>
 				</view>
 			</view>
@@ -34,7 +35,8 @@
 				<view class="modal-body">
 					<view class="form-item">
 						<text class="label">标签名称</text>
-						<input class="input" v-model="labelName" placeholder="请输入标签名称" />
+						<input class="input" v-model="labelName" placeholder="请输入标签名称" confirm-type="done" @input="clearLabelError" @confirm="saveLabel" />
+						<text class="error-tip" v-if="labelError">{{labelError}}</text>
 					</view>
 					<view class="form-item">
 						<text class="label">标签颜色</text>
@@ -58,6 +60,31 @@
 				</view>
 			</view>
 		</view>
+
+		<view class="modal" v-if="showMergeModal" @click="hideMergeDialog">
+			<view class="modal-content" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">合并标签</text>
+					<text class="modal-desc">选择要合并到的目标标签。</text>
+				</view>
+				<scroll-view scroll-y class="merge-list">
+					<view
+						class="merge-target"
+						v-for="label in mergeTargetLabels"
+						:key="label.id"
+						@click="mergeToLabel(label)"
+					>
+						<view class="label-info">
+							<view class="label-color" :style="{ backgroundColor: label.color }"></view>
+							<text class="label-name">{{label.name}}</text>
+						</view>
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="confirm-btn single-btn" @click.stop="hideMergeDialog">取消</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
@@ -72,7 +99,10 @@
 	const isEdit = ref(false)
 	const editingLabelId = ref(0)
 	const labelName = ref('')
+	const labelError = ref('')
 	const labelColor = ref('#1F7A72')
+	const showMergeModal = ref(false)
+	const mergeSourceLabel = ref<Label | null>(null)
 
 	const colorOptions = [
 		'#1F7A72',
@@ -89,6 +119,11 @@
 		labels.value = LabelManager.getSortedLabels(kind.value)
 	}
 
+	const mergeTargetLabels = computed(() => {
+		if (!mergeSourceLabel.value) return labels.value
+		return labels.value.filter(label => label.id !== mergeSourceLabel.value?.id)
+	})
+
 	const syncTitle = () => {
 		pageTitle.value = kind.value === 'event' ? '事件标签管理' : '记账标签管理'
 		uni.setNavigationBarTitle({
@@ -99,6 +134,7 @@
 	const showAddDialog = () => {
 		isEdit.value = false
 		labelName.value = ''
+		labelError.value = ''
 		labelColor.value = '#1F7A72'
 		showModal.value = true
 	}
@@ -107,17 +143,63 @@
 		isEdit.value = true
 		editingLabelId.value = label.id
 		labelName.value = label.name
+		labelError.value = ''
 		labelColor.value = label.color
 		showModal.value = true
 	}
 
 	const hideModal = () => {
 		showModal.value = false
+		labelError.value = ''
+	}
+
+	const showMergeDialog = (label: Label) => {
+		mergeSourceLabel.value = label
+		showMergeModal.value = true
+	}
+
+	const hideMergeDialog = () => {
+		showMergeModal.value = false
+		mergeSourceLabel.value = null
+	}
+
+	const mergeToLabel = (target: Label) => {
+		if (!mergeSourceLabel.value) return
+		const source = mergeSourceLabel.value
+		uni.showModal({
+			title: '确认合并',
+			content: `把「${source.name}」合并到「${target.name}」吗？`,
+			success: (res) => {
+				if (!res.confirm) return
+				const success = LabelManager.mergeLabels(source.id, target.id, kind.value)
+				if (!success) {
+					uni.showToast({ title: '合并失败', icon: 'none' })
+					return
+				}
+				hideMergeDialog()
+				loadLabels()
+				uni.showToast({ title: '合并成功', icon: 'success' })
+			}
+		})
+	}
+
+	const clearLabelError = () => {
+		if (labelError.value) {
+			labelError.value = ''
+		}
 	}
 
 	const saveLabel = () => {
-		if (!labelName.value.trim()) {
+		const normalizedName = labelName.value.trim()
+		if (!normalizedName) {
+			labelError.value = '请输入标签名称'
 			uni.showToast({ title: '请输入标签名称', icon: 'none' })
+			return
+		}
+
+		if (LabelManager.isLabelNameDuplicate(normalizedName, kind.value, isEdit.value ? editingLabelId.value : 0)) {
+			labelError.value = '已存在同名标签'
+			uni.showToast({ title: '标签名称已存在', icon: 'none' })
 			return
 		}
 
@@ -126,16 +208,17 @@
 			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
 			success = LabelManager.updateLabel({
 				id: editingLabelId.value,
-				name: labelName.value,
+				name: normalizedName,
 				color: labelColor.value,
 				sortOrder: currentLabel?.sortOrder || 0
 			}, kind.value)
 		} else {
-			success = LabelManager.addLabel(labelName.value, labelColor.value, kind.value)
+			success = LabelManager.addLabel(normalizedName, labelColor.value, kind.value)
 		}
 
 		if (!success) {
-			uni.showToast({ title: '保存失败或名称重复', icon: 'none' })
+			labelError.value = '保存失败，请稍后再试'
+			uni.showToast({ title: '保存失败', icon: 'none' })
 			return
 		}
 
@@ -266,6 +349,7 @@
 	}
 
 	.sort-btn,
+	.merge-btn,
 	.delete-btn {
 		min-width: 34px;
 		height: 34px;
@@ -279,6 +363,11 @@
 	.sort-btn {
 		background-color: #f0e7dc;
 		color: #4d5b67;
+	}
+
+	.merge-btn {
+		background-color: #5d7fa3;
+		color: #fff;
 	}
 
 	.delete-btn {
@@ -333,6 +422,13 @@
 		color: #24323a;
 	}
 
+	.modal-desc {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #8792a1;
+		margin-top: 6px;
+	}
+
 	.modal-header,
 	.modal-footer {
 		margin-bottom: 12px;
@@ -357,6 +453,32 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
+	}
+
+	.merge-list {
+		height: 320px;
+		max-height: 46vh;
+		margin-bottom: 14px;
+	}
+
+	.merge-target {
+		height: 48px;
+		flex-direction: row;
+		align-items: center;
+		padding: 0 12px;
+		border-radius: 16px;
+		background-color: #fffdf9;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+		margin-bottom: 8px;
 	}
 
 	.color-options {
@@ -406,5 +528,9 @@
 		background-color: #1f7a72;
 		color: #fff;
 		margin-left: 10px;
+	}
+
+	.single-btn {
+		margin-left: 0;
 	}
 </style>

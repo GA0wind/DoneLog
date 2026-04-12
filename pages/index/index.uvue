@@ -17,6 +17,13 @@
 			</picker>
 		</view>
 
+		<view class="quick-row">
+			<view class="quick-chip" :class="{ active: hideCompletedToday }" @click="toggleHideCompleted">
+				<text>{{hideCompletedToday ? '显示已完成' : '隐藏已完成'}}</text>
+			</view>
+			<text class="quick-count">当前 {{filteredEvents.length}} 个</text>
+		</view>
+
 		<!-- 事件列表 -->
 		<scroll-view scroll-y class="event-list" @scrolltolower="loadMore">
 			<view 
@@ -46,7 +53,10 @@
 							{{getLabelName(parseInt(labelId))}}
 						</text>
 					</view>
-					<button class="action-btn complete-btn compact-btn" v-if="canComplete(event)" @click.stop="markComplete(event.id)">完成</button>
+					<view class="footer-actions" v-if="canComplete(event)">
+						<button class="action-btn start-btn compact-btn" @click.stop="startPomodoro(event.id)">开始</button>
+						<button class="action-btn complete-btn compact-btn" @click.stop="markComplete(event.id)">完成</button>
+					</view>
 				</view>
 			</view>
 			<view class="empty-tip" v-if="filteredEvents.length === 0">
@@ -57,19 +67,14 @@
 		</scroll-view>
 
 		<!-- 浮动添加按钮 -->
-		<view 
-			class="add-btn" 
-			
-
-			@click="goToAdd"
-		>
+		<view class="add-btn" @click="goToAdd">
 			<text class="add-icon">+</text>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-	import { EventManager } from '@/utils/eventManager.uts'
+	import { EventLatestCompletion, EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
 
@@ -82,6 +87,9 @@
 	const labels = ref<Label[]>([])
 	const searchKeyword = ref('')
 	const selectedLabel = ref<Label | null>(null)
+	const latestCompletionDates = ref<EventLatestCompletion[]>([])
+	const todayCompletedEventIds = ref<number[]>([])
+	const hideCompletedToday = ref(false)
 	const labelOptions = ref<Label[]>([{ id: 0, name: '全部标签', color: '', sortOrder: 0 }])
 	const selectedStatus = ref<{ id: number, name: string } | null>({ id: 1, name: '进行中' })
 	const statusOptions = ref<{ id: number, name: string }[]>([
@@ -100,6 +108,8 @@
 	const loadData = () => {
 		events.value = EventManager.getSortedEvents(true, selectedLabel.value?.id || null)
 		labels.value = LabelManager.getSortedLabels()
+		latestCompletionDates.value = EventManager.getLatestCompletionDates()
+		todayCompletedEventIds.value = EventManager.getCompletedEventIdsOnDate(Date.now())
 		getLabelOptions()
 	}
 
@@ -131,8 +141,8 @@
 	}
 
 	const getLastCompleteDate = (event: Event): number | null => {
-		const lastRecord = EventManager.getEventHistory(event.id)[0]
-		return lastRecord?.lastCompleteDate || null
+		const item = latestCompletionDates.value.find(record => record.eventId === event.id)
+		return item ? item.lastCompleteDate : null
 	}
 
 	const matchesStatus = (event: Event): boolean => {
@@ -148,10 +158,16 @@
 	}
 
 	const isCompletedEvent = (event: Event): boolean => {
-		return EventManager.isCompletedOnDate(event.id, Date.now()) || EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
+		return isCompletedToday(event.id) || EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
 	}
 
-	const shouldHideCompletedEvent = (_event: Event): boolean => false
+	const shouldHideCompletedEvent = (event: Event): boolean => {
+		return hideCompletedToday.value && !event.isTerminated && isCompletedEvent(event)
+	}
+
+	const isCompletedToday = (eventId: number): boolean => {
+		return todayCompletedEventIds.value.includes(eventId)
+	}
 
 	const getEventDisplayGroup = (event: Event): number => {
 		if (!event.isTerminated && !isCompletedEvent(event)) {
@@ -193,7 +209,7 @@
 		if (event.isTerminated) {
 			return false
 		}
-		if (EventManager.isCompletedOnDate(event.id, Date.now())) {
+		if (isCompletedToday(event.id)) {
 			return false
 		}
 		return !EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
@@ -232,7 +248,7 @@
 		if (event.isTerminated) {
 			return '已终止'
 		}
-		if (EventManager.isCompletedOnDate(event.id, Date.now())) {
+		if (isCompletedToday(event.id)) {
 			return '已完成'
 		}
 		if (EventManager.isFixedDateCompleted(event, lastCompleteDate)) {
@@ -300,6 +316,16 @@
 			selectedStatus.value = statusOptions.value[index]
 		}
 		loadData()
+	}
+
+	const toggleHideCompleted = () => {
+		hideCompletedToday.value = !hideCompletedToday.value
+	}
+
+	const startPomodoro = (eventId: number) => {
+		uni.navigateTo({
+			url: `/pages/pomodoro/index?eventId=${eventId}&autoStart=1`
+		})
 	}
 
 	// 跳转到添加页面
@@ -382,6 +408,45 @@
 	.arrow {
 		margin-left: 5px;
 		font-size: 10px;
+		color: #8792a1;
+	}
+
+	.quick-row {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin: 0 14px 10px;
+	}
+
+	.quick-chip {
+		height: 32px;
+		line-height: 32px;
+		padding: 0 12px;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		font-size: 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.quick-chip text {
+		font-size: 12px;
+		color: #4d5b67;
+	}
+
+	.quick-chip.active {
+		background-color: #1f7a72;
+		border-color: #1f7a72;
+	}
+
+	.quick-chip.active text {
+		color: #fff;
+	}
+
+	.quick-count {
+		font-size: 12px;
 		color: #8792a1;
 	}
 
@@ -494,20 +559,35 @@
 		margin-left: 10px;
 		font-size: 13px;
 		font-weight: 600;
-		padding: 0 20px;
+		padding: 0 14px;
 		height: 38px;
 		line-height: 38px;
-		background-color: #1f7a72;
-		color: #fff;
 		border-radius: 999px;
-		box-shadow: 0 8px 18px rgba(31, 122, 114, 0.18);
 	}
 
 	.compact-btn {
 		height: 38px;
 		line-height: 38px;
-		padding: 0 20px;
+		padding: 0 14px;
 		margin-left: 0;
+	}
+
+	.footer-actions {
+		flex-direction: row;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.start-btn {
+		background-color: #f2ebe2;
+		color: #4d5b67;
+		margin-right: 8px;
+	}
+
+	.complete-btn {
+		background-color: #1f7a72;
+		color: #fff;
+		box-shadow: 0 8px 18px rgba(31, 122, 114, 0.18);
 	}
 
 	/* 空状态 */

@@ -55,6 +55,12 @@
 			}
 		},
 		{
+			"path": "pages/pomodoro/index",
+			"style": {
+				"navigationBarTitleText": "番茄钟"
+			}
+		},
+		{
 			"path": "pages/label/index",
 			"style": {
 				"navigationBarTitleText": "标签管理"
