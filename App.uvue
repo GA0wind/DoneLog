@@ -52,29 +52,38 @@
 
 	const handlePendingWidgetAction = () => {
 		const payload = consumePendingWidgetAction()
-		if (!payload) {
+		if (payload == null) {
+			return
+		}
+		if (payload.length === 0) {
 			return
 		}
 
 		try {
 			const action = JSON.parse(payload)
-			if (action && action.type === 'open-complete' && action.eventId) {
-				const event = EventManager.getEventById(action.eventId)
-				if (!event) {
+			if (action == null) {
+				return
+			}
+
+			const actionType = action['type'] as string
+			const actionEventId = action['eventId'] as number
+			if (actionType === 'open-complete' && actionEventId > 0) {
+				const event = EventManager.getEventById(actionEventId)
+				if (event == null) {
 					return
 				}
 				if (event.nextDueDate > 0) {
 					uni.navigateTo({
-						url: `/pages/event/complete?id=${action.eventId}&entry=widget`
+						url: `/pages/event/complete?id=${actionEventId}&entry=widget`
 					})
 					return
 				}
-				const success = EventManager.markEventComplete(action.eventId)
-				if (!success) {
+				const success = EventManager.markEventComplete(actionEventId)
+				if (success == false) {
 					return
 				}
 				if (event.intervalDays < 0) {
-					EventManager.terminateEvent(action.eventId)
+					EventManager.terminateEvent(actionEventId)
 				}
 				saveTodayWidgetSnapshot()
 				uni.showToast({
@@ -107,8 +116,4 @@
 		flex-direction: column;
 	}
 
-	page {
-		background-color: #f4efe7;
-		color: #24323a;
-	}
 </style>

@@ -8,12 +8,12 @@
 
 		<view class="period-switch">
 			<view class="period-pill" :class="{ active: period === 'week' }" @click="setPeriod('week')">
-				<text class="period-kicker">周期</text>
-				<text class="period-text">按星期</text>
+				<text class="period-kicker" :class="{ active: period === 'week' }">周期</text>
+				<text class="period-text" :class="{ active: period === 'week' }">按星期</text>
 			</view>
-			<view class="period-pill" :class="{ active: period === 'month' }" @click="setPeriod('month')">
-				<text class="period-kicker">周期</text>
-				<text class="period-text">按月份</text>
+			<view class="period-pill last-period-pill" :class="{ active: period === 'month' }" @click="setPeriod('month')">
+				<text class="period-kicker" :class="{ active: period === 'month' }">周期</text>
+				<text class="period-text" :class="{ active: period === 'month' }">按月份</text>
 			</view>
 		</view>
 
@@ -215,25 +215,25 @@
 	const getEventLabelName = (labelId: number): string => {
 		if (labelId === 0) return '未分类'
 		const label = eventLabels.value.find(item => item.id === labelId)
-		return label?.name || '未知标签'
+		return label != null ? label.name : '未知标签'
 	}
 
 	const getEventLabelColor = (labelId: number): string => {
 		if (labelId === 0) return '#B7A995'
 		const label = eventLabels.value.find(item => item.id === labelId)
-		return label?.color || '#1F7A72'
+		return label != null ? label.color : '#1F7A72'
 	}
 
 	const getAccountLabelName = (labelId: number): string => {
 		if (labelId === 0) return '未分类'
 		const label = accountLabels.value.find(item => item.id === labelId)
-		return label?.name || '未知标签'
+		return label != null ? label.name : '未知标签'
 	}
 
 	const getAccountLabelColor = (labelId: number): string => {
 		if (labelId === 0) return '#B7A995'
 		const label = accountLabels.value.find(item => item.id === labelId)
-		return label?.color || '#E07A5F'
+		return label != null ? label.color : '#E07A5F'
 	}
 
 	const goToLabels = (kind: string) => {
@@ -279,13 +279,13 @@
 	}
 
 	const importBackup = () => {
-		if (!importText.value.trim()) {
+		if (importText.value.trim().length === 0) {
 			importError.value = '请先粘贴备份内容'
 			return
 		}
 
 		const success = StorageUtils.importData(importText.value.trim())
-		if (!success) {
+		if (success == false) {
 			importError.value = '导入失败，请确认备份内容完整'
 			uni.showToast({ title: '导入失败', icon: 'none' })
 			return
@@ -304,9 +304,9 @@
 			title: '重置默认标签',
 			content: '会清空当前标签，并移除记录上的旧标签关联。事件、完成记录和记账记录不会删除。',
 			success: (res) => {
-				if (!res.confirm) return
+				if (res.confirm == false) return
 				const success = LabelManager.resetAllDefaultLabels()
-				if (!success) {
+				if (success == false) {
 					uni.showToast({ title: '重置失败', icon: 'none' })
 					return
 				}
@@ -327,7 +327,7 @@
 
 <style>
 	.container {
-		min-height: 100vh;
+		flex: 1;
 		background-color: #f4efe7;
 		padding: 16px;
 	}
@@ -385,7 +385,7 @@
 		border-color: #e3d7ca;
 	}
 
-	.period-pill:last-child {
+	.last-period-pill {
 		margin-right: 0;
 	}
 
@@ -408,8 +408,8 @@
 		color: #41505c;
 	}
 
-	.period-pill.active .period-kicker,
-	.period-pill.active .period-text {
+	.period-kicker.active,
+	.period-text.active {
 		color: #fff;
 	}
 
@@ -427,7 +427,7 @@
 	}
 
 	.section-title {
-		display: block;
+		display: flex;
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;
@@ -481,12 +481,8 @@
 		border-color: #eee2d7;
 	}
 
-	.summary-item:last-child {
-		margin-right: 0;
-	}
-
 	.summary-value {
-		display: block;
+		display: flex;
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;
@@ -506,10 +502,6 @@
 		border-bottom-width: 1px;
 		border-bottom-style: solid;
 		border-bottom-color: #f1e7dd;
-	}
-
-	.stat-row:last-child {
-		border-bottom-width: 0;
 	}
 
 	.stat-left,
@@ -574,7 +566,7 @@
 	}
 
 	.widget-title {
-		display: block;
+		display: flex;
 		font-size: 18px;
 		font-weight: bold;
 		color: #fff9f2;
@@ -582,7 +574,7 @@
 	}
 
 	.widget-meta {
-		display: block;
+		display: flex;
 		font-size: 12px;
 		color: #c7d3da;
 		margin-bottom: 14px;
@@ -609,17 +601,13 @@
 		margin-bottom: 10px;
 	}
 
-	.widget-item:last-child {
-		margin-bottom: 0;
-	}
-
 	.widget-item-main {
 		flex: 1;
 		padding-right: 12px;
 	}
 
 	.widget-item-name {
-		display: block;
+		display: flex;
 		font-size: 14px;
 		font-weight: 600;
 		color: #fff;
@@ -705,7 +693,7 @@
 
 	.modal-content {
 		width: 100%;
-		max-height: 78vh;
+		max-height: 620px;
 		background-color: #fffaf3;
 		border-radius: 24px;
 		padding: 18px;

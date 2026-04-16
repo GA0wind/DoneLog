@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="container">
 		<view class="tips-card">
 			<text class="tips-title">{{pageTitle}}</text>
@@ -120,8 +120,9 @@
 	}
 
 	const mergeTargetLabels = computed(() => {
-		if (!mergeSourceLabel.value) return labels.value
-		return labels.value.filter(label => label.id !== mergeSourceLabel.value?.id)
+		if (mergeSourceLabel.value == null) return labels.value
+		const source = mergeSourceLabel.value
+		return labels.value.filter(label => label.id !== source.id)
 	})
 
 	const syncTitle = () => {
@@ -164,15 +165,15 @@
 	}
 
 	const mergeToLabel = (target: Label) => {
-		if (!mergeSourceLabel.value) return
+		if (mergeSourceLabel.value == null) return
 		const source = mergeSourceLabel.value
 		uni.showModal({
 			title: '确认合并',
 			content: `把「${source.name}」合并到「${target.name}」吗？`,
 			success: (res) => {
-				if (!res.confirm) return
+				if (res.confirm == false) return
 				const success = LabelManager.mergeLabels(source.id, target.id, kind.value)
-				if (!success) {
+				if (success == false) {
 					uni.showToast({ title: '合并失败', icon: 'none' })
 					return
 				}
@@ -184,14 +185,14 @@
 	}
 
 	const clearLabelError = () => {
-		if (labelError.value) {
+		if (labelError.value.length > 0) {
 			labelError.value = ''
 		}
 	}
 
 	const saveLabel = () => {
 		const normalizedName = labelName.value.trim()
-		if (!normalizedName) {
+		if (normalizedName.length === 0) {
 			labelError.value = '请输入标签名称'
 			uni.showToast({ title: '请输入标签名称', icon: 'none' })
 			return
@@ -210,13 +211,13 @@
 				id: editingLabelId.value,
 				name: normalizedName,
 				color: labelColor.value,
-				sortOrder: currentLabel?.sortOrder || 0
+				sortOrder: currentLabel != null ? currentLabel.sortOrder : 0
 			}, kind.value)
 		} else {
 			success = LabelManager.addLabel(normalizedName, labelColor.value, kind.value)
 		}
 
-		if (!success) {
+		if (success == false) {
 			labelError.value = '保存失败，请稍后再试'
 			uni.showToast({ title: '保存失败', icon: 'none' })
 			return
@@ -231,9 +232,9 @@
 			title: '确认删除',
 			content: '删除后对应记录将取消关联该标签，确定继续吗？',
 			success: (res) => {
-				if (!res.confirm) return
+				if (res.confirm == false) return
 				const success = LabelManager.deleteLabel(labelId, kind.value)
-				if (success) {
+				if (success == true) {
 					loadLabels()
 					uni.showToast({ title: '删除成功', icon: 'success' })
 				}
@@ -270,7 +271,7 @@
 
 <style>
 	.container {
-		min-height: 100vh;
+		flex: 1;
 		background-color: #f4efe7;
 		padding: 16px;
 		padding-bottom: 100px;
@@ -293,7 +294,7 @@
 	}
 
 	.tips-title {
-		display: block;
+		display: flex;
 		font-size: 20px;
 		font-weight: bold;
 		color: #24323a;
@@ -318,10 +319,6 @@
 		border-bottom-width: 1px;
 		border-bottom-style: solid;
 		border-bottom-color: #f1e7dd;
-	}
-
-	.label-item:last-child {
-		border-bottom-width: 0;
 	}
 
 	.label-info {
@@ -439,7 +436,7 @@
 	}
 
 	.label {
-		display: block;
+		display: flex;
 		font-size: 14px;
 		color: #4d5b67;
 		margin-bottom: 8px;
@@ -464,7 +461,7 @@
 
 	.merge-list {
 		height: 320px;
-		max-height: 46vh;
+		max-height: 320px;
 		margin-bottom: 14px;
 	}
 

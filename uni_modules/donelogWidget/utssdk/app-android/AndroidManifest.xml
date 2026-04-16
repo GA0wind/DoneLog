@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 	<application>
+		<!-- [第三方/平台配置] Android 系统桌面组件入口，注册 DoneLog 自研 UTS 小组件 Provider；不包含外部 SDK 密钥。 -->
 		<receiver
 			android:name="uts.sdk.modules.donelogWidget.DoneLogWidgetProvider"
 			android:exported="false">
@@ -11,6 +12,7 @@
 				android:resource="@xml/donelog_widget_info" />
 		</receiver>
 
+		<!-- [第三方/平台配置] Android 系统用于从桌面组件唤起 App 的透明 Activity；不对外导出。 -->
 		<activity
 			android:name="uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity"
 			android:exported="false"

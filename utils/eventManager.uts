@@ -1,4 +1,4 @@
-import { StorageUtils, Event, CompletionRecord } from './storage.uts'
+import { StorageUtils, Event, EventInput, CompletionRecord } from './storage.uts'
 import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
 export type StatsPeriod = 'week' | 'month'
@@ -19,6 +19,11 @@ export type EventWidgetItem = {
 export type EventLatestCompletion = {
   eventId: number
   lastCompleteDate: number
+}
+
+type PeriodRange = {
+  start: number
+  end: number
 }
 
 /**
@@ -79,12 +84,12 @@ export class EventManager {
     }
 
     if (event.intervalDays > 0) {
-      const baseTime = lastCompleteDate || event.createTime
+      const baseTime = lastCompleteDate !== null ? lastCompleteDate : event.createTime
       return this.getStartOfDay(baseTime) + (event.intervalDays + 1) * this.oneDay
     }
 
     if (event.intervalDays === 0) {
-      const baseTime = lastCompleteDate || event.createTime
+      const baseTime = lastCompleteDate !== null ? lastCompleteDate : event.createTime
       return this.getStartOfDay(baseTime) + this.oneDay
     }
 
@@ -122,13 +127,13 @@ export class EventManager {
       // 标签筛选
       if (labelId !== null) {
         const labelIds = this.parseLabelIds(event.labelIdList)
-        if (!labelIds.includes(labelId)) {
+        if (labelIds.includes(labelId) == false) {
           return false
         }
       }
 
       // 是否显示已终止
-      if (!showTerminated && event.isTerminated) {
+      if (showTerminated == false && event.isTerminated) {
         return false
       }
 
@@ -140,8 +145,8 @@ export class EventManager {
       const lastRecordA = latestRecordByEventId.get(a.id)
       const lastRecordB = latestRecordByEventId.get(b.id)
 
-      const daysA = this.calculateDaysUntilDue(a, lastRecordA?.lastCompleteDate || null)
-      const daysB = this.calculateDaysUntilDue(b, lastRecordB?.lastCompleteDate || null)
+      const daysA = this.calculateDaysUntilDue(a, lastRecordA != null ? lastRecordA.lastCompleteDate : null)
+      const daysB = this.calculateDaysUntilDue(b, lastRecordB != null ? lastRecordB.lastCompleteDate : null)
 
       // 距今天数为0的优先（今天要做的事）
       if (daysA === 0 && daysB !== 0) return -1
@@ -178,7 +183,7 @@ export class EventManager {
     return events.filter(event => {
       const lastRecord = latestRecordByEventId.get(event.id)
 
-      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
       return daysUntilDue === 0
     })
   }
@@ -196,10 +201,10 @@ export class EventManager {
       if (this.hasCompletionOnDate(records, event.id, now)) {
         continue
       }
-      if (this.isFixedDateCompleted(event, lastRecord?.lastCompleteDate || null)) {
+      if (this.isFixedDateCompleted(event, lastRecord != null ? lastRecord.lastCompleteDate : null)) {
         continue
       }
-      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord?.lastCompleteDate || null)
+      const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
 
       let statusText = ''
       let tagText = ''
@@ -246,7 +251,7 @@ export class EventManager {
     const latestDates = new Map<number, EventLatestCompletion>()
     records.forEach(record => {
       const current = latestDates.get(record.eventId)
-      if (!current || record.lastCompleteDate > current.lastCompleteDate) {
+      if (current == null || record.lastCompleteDate > current.lastCompleteDate) {
         latestDates.set(record.eventId, {
           eventId: record.eventId,
           lastCompleteDate: record.lastCompleteDate
@@ -262,7 +267,7 @@ export class EventManager {
     const eventIds: number[] = []
 
     records.forEach(record => {
-      if (this.getStartOfDay(record.lastCompleteDate) === targetDay && !eventIds.includes(record.eventId)) {
+      if (this.getStartOfDay(record.lastCompleteDate) === targetDay && eventIds.includes(record.eventId) == false) {
         eventIds.push(record.eventId)
       }
     })
@@ -273,11 +278,11 @@ export class EventManager {
   /**
    * 添加事件
    */
-  static addEvent(event: Omit<Event, 'id' | 'createTime' | 'updateTime'>): boolean {
+  static addEvent(event: EventInput): boolean {
     return this.addEventAndGetId(event) > 0
   }
 
-  static addEventAndGetId(event: Omit<Event, 'id' | 'createTime' | 'updateTime'>): number {
+  static addEventAndGetId(event: EventInput): number {
     const events = StorageUtils.getEvents()
     const newEvent: Event = {
       name: event.name,
@@ -293,7 +298,7 @@ export class EventManager {
     }
     events.push(newEvent)
     const success = StorageUtils.saveEvents(events)
-    if (success) {
+    if (success == true) {
       this.syncWidgetSnapshot()
       return newEvent.id
     }
@@ -302,7 +307,7 @@ export class EventManager {
 
   static duplicateEvent(eventId: number): number {
     const source = this.getEventById(eventId)
-    if (!source) return 0
+    if (source == null) return 0
 
     return this.addEventAndGetId({
       name: `${source.name} 副本`,
@@ -326,7 +331,7 @@ export class EventManager {
     event.updateTime = Date.now()
     events[index] = event
     const success = StorageUtils.saveEvents(events)
-    if (success) {
+    if (success == true) {
       this.syncWidgetSnapshot()
     }
     return success
@@ -344,7 +349,7 @@ export class EventManager {
     events[index].terminatedAt = Date.now()
     events[index].updateTime = Date.now()
     const success = StorageUtils.saveEvents(events)
-    if (success) {
+    if (success == true) {
       this.syncWidgetSnapshot()
     }
     return success
@@ -359,13 +364,13 @@ export class EventManager {
     const success = StorageUtils.saveEvents(events)
 
     // 同时删除相关的完成记录
-    if (success) {
+    if (success == true) {
       let records = StorageUtils.getCompletionRecords()
       records = records.filter(r => r.eventId !== eventId)
       StorageUtils.saveCompletionRecords(records)
     }
 
-    if (success) {
+    if (success == true) {
       this.syncWidgetSnapshot()
     }
     return success
@@ -392,7 +397,10 @@ export class EventManager {
    */
   static markEventComplete(eventId: number): boolean {
     const event = this.getEventById(eventId)
-    if (!event || event.isTerminated) {
+    if (event == null) {
+      return false
+    }
+    if (event.isTerminated) {
       return false
     }
 
@@ -410,7 +418,7 @@ export class EventManager {
     }
     records.push(newRecord)
     const success = StorageUtils.saveCompletionRecords(records)
-    if (success) {
+    if (success == true) {
       this.syncWidgetSnapshot()
     }
     return success
@@ -428,7 +436,8 @@ export class EventManager {
    */
   static getEventById(eventId: number): Event | null {
     const events = StorageUtils.getEvents()
-    return events.find(e => e.id === eventId) || null
+    const event = events.find(e => e.id === eventId)
+    return event != null ? event : null
   }
 
   static getCompletionStatsByLabel(period: StatsPeriod): EventLabelStats[] {
@@ -443,20 +452,22 @@ export class EventManager {
       }
 
       const event = events.find(item => item.id === record.eventId)
-      if (!event) {
+      if (event == null) {
         return
       }
 
       const labelIds = this.parseLabelIds(event.labelIdList)
       if (labelIds.length === 0) {
-        const uncategorized = statsMap.get(0) || { labelId: 0, count: 0 }
+        const cached = statsMap.get(0)
+        const uncategorized = cached != null ? cached : { labelId: 0, count: 0 }
         uncategorized.count += 1
         statsMap.set(0, uncategorized)
         return
       }
 
       labelIds.forEach(labelId => {
-        const current = statsMap.get(labelId) || { labelId, count: 0 }
+        const cached = statsMap.get(labelId)
+        const current = cached != null ? cached : { labelId, count: 0 }
         current.count += 1
         statsMap.set(labelId, current)
       })
@@ -481,7 +492,7 @@ export class EventManager {
     const latestRecordByEventId = new Map<number, CompletionRecord>()
     records.forEach(record => {
       const current = latestRecordByEventId.get(record.eventId)
-      if (!current || record.lastCompleteDate > current.lastCompleteDate) {
+      if (current == null || record.lastCompleteDate > current.lastCompleteDate) {
         latestRecordByEventId.set(record.eventId, record)
       }
     })
@@ -501,7 +512,7 @@ export class EventManager {
   }
 
   private static parseLabelIds(labelIdList: string): number[] {
-    if (!labelIdList) {
+    if (labelIdList.length === 0) {
       return []
     }
 
@@ -511,7 +522,7 @@ export class EventManager {
       .filter(id => !Number.isNaN(id))
   }
 
-  private static getPeriodRange(period: StatsPeriod): { start: number, end: number } {
+  private static getPeriodRange(period: StatsPeriod): PeriodRange {
     const now = new Date()
     const current = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const end = current + this.oneDay - 1

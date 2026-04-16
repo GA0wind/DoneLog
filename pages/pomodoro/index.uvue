@@ -11,10 +11,10 @@
 				class="mode-chip"
 				v-for="item in modeOptions"
 				:key="item.id"
-				:class="{ active: mode === item.id }"
+				:class="{ active: mode === item.id, last: item.id === 'long' }"
 				@click="switchMode(item.id)"
 			>
-				<text>{{item.name}}</text>
+				<text class="mode-chip-text" :class="{ active: mode === item.id }">{{item.name}}</text>
 			</view>
 		</view>
 
@@ -30,7 +30,7 @@
 		<view class="action-row">
 			<button class="secondary-btn" @click="resetTimer">重置</button>
 			<button class="primary-btn" @click="toggleTimer">{{isRunning ? '暂停' : '开始'}}</button>
-			<button class="secondary-btn" @click="skipRound">跳过</button>
+			<button class="secondary-btn last-action-btn" @click="skipRound">跳过</button>
 		</view>
 
 		<view class="stats-card">
@@ -74,7 +74,8 @@
 
 	const getDurationSeconds = (value: PomodoroMode): number => {
 		const option = modeOptions.find(item => item.id === value)
-		return (option?.minutes || 25) * 60
+		const minutes = option != null ? option.minutes : 25
+		return minutes * 60
 	}
 
 	const currentDuration = computed(() => getDurationSeconds(mode.value))
@@ -124,13 +125,17 @@
 		if (linkedEventId.value <= 0) return false
 
 		const event = EventManager.getEventById(linkedEventId.value)
-		if (!event || event.isTerminated) {
+		if (event == null) {
+			uni.showToast({ title: '事件不可操作', icon: 'none' })
+			return false
+		}
+		if (event.isTerminated) {
 			uni.showToast({ title: '事件不可操作', icon: 'none' })
 			return false
 		}
 
 		const success = EventManager.markEventComplete(linkedEventId.value)
-		if (!success) {
+		if (success == false) {
 			uni.showToast({ title: '事件已完成过', icon: 'none' })
 			return false
 		}
@@ -148,7 +153,7 @@
 		stopTimer()
 		if (mode.value === 'focus') {
 			completedFocusCount.value += 1
-			const linkedCompleted = completeEvent && linkedEventId.value > 0 ? completeLinkedEvent() : false
+			const linkedCompleted = completeEvent == true && linkedEventId.value > 0 ? completeLinkedEvent() : false
 			const nextMode: PomodoroMode = completedFocusCount.value % 4 === 0 ? 'long' : 'short'
 			switchMode(nextMode)
 			uni.showToast({ title: linkedCompleted ? '事件已完成' : '专注完成', icon: 'success' })
@@ -189,18 +194,18 @@
 	}
 
 	onLoad((options: any) => {
-		if (options.eventId) {
+		if (options.eventId != null && options.eventId !== '') {
 			linkedEventId.value = parseInt(options.eventId)
 			linkedEvent.value = EventManager.getEventById(linkedEventId.value)
 			const event = linkedEvent.value
-			if (event) {
+			if (event != null) {
 				const lastRecord = EventManager.getEventHistory(linkedEventId.value)[0]
 				linkedEventCompleted.value = EventManager.isCompletedOnDate(linkedEventId.value, Date.now())
-					|| EventManager.isFixedDateCompleted(event, lastRecord?.lastCompleteDate || null)
+					|| EventManager.isFixedDateCompleted(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
 			}
 		}
 
-		if (options.autoStart === '1' && !linkedEventCompleted.value) {
+		if (options.autoStart === '1' && linkedEventCompleted.value == false) {
 			switchMode('focus')
 			startTimer()
 		}
@@ -213,7 +218,7 @@
 
 <style>
 	.container {
-		min-height: 100vh;
+		flex: 1;
 		background-color: #f4efe7;
 		padding: 16px;
 	}
@@ -236,7 +241,7 @@
 	}
 
 	.linked-title {
-		display: block;
+		display: flex;
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;
@@ -268,11 +273,11 @@
 		margin-right: 6px;
 	}
 
-	.mode-chip:last-child {
+	.mode-chip.last {
 		margin-right: 0;
 	}
 
-	.mode-chip text {
+	.mode-chip-text {
 		font-size: 13px;
 		color: #4d5b67;
 	}
@@ -281,7 +286,7 @@
 		background-color: #1f7a72;
 	}
 
-	.mode-chip.active text {
+	.mode-chip-text.active {
 		color: #fff;
 	}
 
@@ -355,7 +360,7 @@
 		color: #4d5b67;
 	}
 
-	.action-row button:last-child {
+	.last-action-btn {
 		margin-right: 0;
 	}
 
