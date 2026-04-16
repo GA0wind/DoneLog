@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- [第三方/平台配置] Android 桌面组件元数据，声明尺寸、刷新周期、初始布局和主屏分类。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
 	android:minWidth="250dp"
 	android:minHeight="180dp"

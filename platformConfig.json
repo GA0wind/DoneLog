@@ -1,4 +1,5 @@
 
+// [第三方/平台配置] DCloud uni-app x 本地插件的目标平台配置；当前只声明 Android App。
 // 参考链接 https://doc.dcloud.net.cn/uni-app-x/tutorial/ls-plugin.html#setting
 {
     "targets": [

@@ -5,13 +5,13 @@
 			<input class="search-input" v-model="searchKeyword" placeholder="搜索事件..." />
 			<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
 				<view class="filter-btn">
-					<text>{{selectedLabel ? selectedLabel.name : '全部标签'}}</text>
+					<text>{{selectedLabel != null ? selectedLabel.name : '全部标签'}}</text>
 					<text class="arrow">▼</text>
 				</view>
 			</picker>
 			<picker mode="selector" :range="statusOptions" range-key="name" @change="onStatusChange">
 				<view class="filter-btn">
-					<text>{{selectedStatus ? selectedStatus.name : '全部状态'}}</text>
+					<text>{{selectedStatus != null ? selectedStatus.name : '全部状态'}}</text>
 					<text class="arrow">▼</text>
 				</view>
 			</picker>
@@ -19,7 +19,7 @@
 
 		<view class="quick-row">
 			<view class="quick-chip" :class="{ active: hideCompletedToday }" @click="toggleHideCompleted">
-				<text>{{hideCompletedToday ? '显示已完成' : '隐藏已完成'}}</text>
+				<text class="quick-chip-text" :class="{ active: hideCompletedToday }">{{hideCompletedToday ? '显示已完成' : '隐藏已完成'}}</text>
 			</view>
 			<text class="quick-count">当前 {{filteredEvents.length}} 个</text>
 		</view>
@@ -78,6 +78,11 @@
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
 
+	type StatusOption = {
+		id: number
+		name: string
+	}
+
 	// 初始化ID
 	EventManager.initIds()
 	LabelManager.initIds()
@@ -91,8 +96,8 @@
 	const todayCompletedEventIds = ref<number[]>([])
 	const hideCompletedToday = ref(false)
 	const labelOptions = ref<Label[]>([{ id: 0, name: '全部标签', color: '', sortOrder: 0 }])
-	const selectedStatus = ref<{ id: number, name: string } | null>({ id: 1, name: '进行中' })
-	const statusOptions = ref<{ id: number, name: string }[]>([
+	const selectedStatus = ref<StatusOption | null>({ id: 1, name: '进行中' })
+	const statusOptions = ref<StatusOption[]>([
 		{ id: 0, name: '全部状态' },
 		{ id: 1, name: '进行中' },
 		{ id: 2, name: '已终止' }
@@ -106,7 +111,7 @@
 
 	// 加载数据
 	const loadData = () => {
-		events.value = EventManager.getSortedEvents(true, selectedLabel.value?.id || null)
+		events.value = EventManager.getSortedEvents(true, selectedLabel.value != null ? selectedLabel.value.id : null)
 		labels.value = LabelManager.getSortedLabels()
 		latestCompletionDates.value = EventManager.getLatestCompletionDates()
 		todayCompletedEventIds.value = EventManager.getCompletedEventIdsOnDate(Date.now())
@@ -116,7 +121,7 @@
 	// 筛选事件
 	const filteredEvents = computed(() => {
 		return events.value.filter(event => {
-			if (!matchesStatus(event)) {
+			if (matchesStatus(event) == false) {
 				return false
 			}
 
@@ -124,7 +129,7 @@
 				return false
 			}
 
-			if (!searchKeyword.value) {
+			if (searchKeyword.value.length === 0) {
 				return true
 			}
 
@@ -133,7 +138,7 @@
 	})
 
 	const getEventLabelIds = (event: Event): number[] => {
-		if (!event.labelIdList) return []
+		if (event.labelIdList.length === 0) return []
 		return event.labelIdList
 			.split(',')
 			.map(id => parseInt(id))
@@ -142,11 +147,11 @@
 
 	const getLastCompleteDate = (event: Event): number | null => {
 		const item = latestCompletionDates.value.find(record => record.eventId === event.id)
-		return item ? item.lastCompleteDate : null
+		return item != null ? item.lastCompleteDate : null
 	}
 
 	const matchesStatus = (event: Event): boolean => {
-		if (!selectedStatus.value || selectedStatus.value.id === 0) {
+		if (selectedStatus.value == null || selectedStatus.value.id === 0) {
 			return true
 		}
 
@@ -162,7 +167,7 @@
 	}
 
 	const shouldHideCompletedEvent = (event: Event): boolean => {
-		return hideCompletedToday.value && !event.isTerminated && isCompletedEvent(event)
+		return hideCompletedToday.value && event.isTerminated == false && isCompletedEvent(event)
 	}
 
 	const isCompletedToday = (eventId: number): boolean => {
@@ -170,21 +175,22 @@
 	}
 
 	const getEventDisplayGroup = (event: Event): number => {
-		if (!event.isTerminated && !isCompletedEvent(event)) {
+		if (event.isTerminated == false && isCompletedEvent(event) == false) {
 			return 0
 		}
-		if (isCompletedEvent(event) && !event.isTerminated) {
+		if (isCompletedEvent(event) && event.isTerminated == false) {
 			return 1
 		}
 		return 2
 	}
 
 	const getCompletionSortTime = (event: Event): number => {
-		return getLastCompleteDate(event) || 0
+		const lastCompleteDate = getLastCompleteDate(event)
+		return lastCompleteDate != null ? lastCompleteDate : 0
 	}
 
 	const compareEventsForDisplay = (a: Event, b: Event): number => {
-		if (selectedStatus.value?.id === 2) {
+		if (selectedStatus.value != null && selectedStatus.value.id === 2) {
 			return 0
 		}
 
@@ -199,7 +205,7 @@
 		}
 
 		if (groupA === 2) {
-			return (b.terminatedAt || 0) - (a.terminatedAt || 0)
+			return b.terminatedAt - a.terminatedAt
 		}
 
 		return 0
@@ -212,24 +218,24 @@
 		if (isCompletedToday(event.id)) {
 			return false
 		}
-		return !EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
+		return EventManager.isFixedDateCompleted(event, getLastCompleteDate(event)) == false
 	}
 
 	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
 		const label = labels.value.find(l => l.id === labelId)
-		return label ? label.name : ''
+		return label != null ? label.name : ''
 	}
 
 	// 获取标签颜色
 	const getLabelColor = (labelId: number): string => {
 		const label = labels.value.find(l => l.id === labelId)
-		return label ? label.color : '#007AFF'
+		return label != null ? label.color : '#007AFF'
 	}
 
 	// 获取短备注
 	const getShortRemark = (remark: string): string => {
-		if (!remark) return ''
+		if (remark.length === 0) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
 	}
 
@@ -268,8 +274,9 @@
 
 	// 标记完成
 	const markComplete = (eventId: number) => {
-		const event = events.value.find(item => item.id === eventId) || EventManager.getEventById(eventId)
-		if (!event) return
+		const cachedEvent = events.value.find(item => item.id === eventId)
+		const event = cachedEvent != null ? cachedEvent : EventManager.getEventById(eventId)
+		if (event == null) return
 		if (event.nextDueDate > 0) {
 			uni.navigateTo({
 				url: `/pages/event/complete?id=${eventId}`
@@ -278,7 +285,7 @@
 		}
 
 		const success = EventManager.markEventComplete(eventId)
-		if (!success) {
+		if (success == false) {
 			uni.showToast({
 				title: '今天已完成过',
 				icon: 'none'
@@ -431,7 +438,7 @@
 		border-color: #eadfd2;
 	}
 
-	.quick-chip text {
+	.quick-chip-text {
 		font-size: 12px;
 		color: #4d5b67;
 	}
@@ -441,7 +448,7 @@
 		border-color: #1f7a72;
 	}
 
-	.quick-chip.active text {
+	.quick-chip-text.active {
 		color: #fff;
 	}
 
@@ -452,14 +459,8 @@
 
 	/* 事件列表 */
 	.event-list {
-		height: calc(100vh - 200px);
-		padding: 4px 14px 0;
-	}
-
-	.event-list::before {
-		content: '';
-		display: block;
-		height: 8px;
+		flex: 1;
+		padding: 12px 14px 0;
 	}
 
 	.event-card {
@@ -645,7 +646,7 @@
 	.add-icon {
 		font-size: 32px;
 		color: #fff;
-		font-weight: 300;
+		font-weight: 400;
 	}
 
 </style>

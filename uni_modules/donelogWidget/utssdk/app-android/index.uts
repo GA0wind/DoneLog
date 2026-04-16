@@ -22,13 +22,15 @@ type WidgetItem = {
 	priority: string
 }
 
+type WidgetOverview = {
+	income: number
+	expense: number
+	count: number
+}
+
 type WidgetPayload = {
 	items: WidgetItem[]
-	overview: {
-		income: number
-		expense: number
-		count: number
-	}
+	overview: WidgetOverview
 }
 
 function getPrefs(context: Context) {
@@ -44,7 +46,7 @@ function getViewId(context: Context, name: string): number {
 }
 
 function parseSnapshot(snapshot: string): WidgetPayload {
-	if (!snapshot) {
+	if (snapshot.length === 0) {
 		return {
 			items: [],
 			overview: {

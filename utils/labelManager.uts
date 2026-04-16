@@ -2,6 +2,11 @@ import { StorageUtils, Label } from './storage.uts'
 
 export type LabelKind = 'event' | 'account'
 
+type DefaultLabel = {
+  name: string
+  color: string
+}
+
 /**
  * 标签管理工具类
  */
@@ -9,7 +14,7 @@ export class LabelManager {
   private static nextEventLabelId: number = 1
   private static nextAccountLabelId: number = 1
   private static readonly defaultLabelsVersion = 1
-  private static readonly defaultEventLabels: { name: string, color: string }[] = [
+  private static readonly defaultEventLabels: DefaultLabel[] = [
     { name: '工作', color: '#1F7A72' },
     { name: '学习', color: '#5D7FA3' },
     { name: '健康', color: '#8AB17D' },
@@ -18,7 +23,7 @@ export class LabelManager {
     { name: '重要', color: '#B56576' },
     { name: '纪念日', color: '#6D597A' }
   ]
-  private static readonly defaultAccountLabels: { name: string, color: string }[] = [
+  private static readonly defaultAccountLabels: DefaultLabel[] = [
     { name: '餐饮', color: '#E07A5F' },
     { name: '交通', color: '#2A9D8F' },
     { name: '购物', color: '#B56576' },
@@ -89,7 +94,7 @@ export class LabelManager {
   static addLabel(name: string, color: string = '#007AFF', kind: LabelKind = 'event'): boolean {
     const labels = this.getLabelsByKind(kind)
     const normalized = name.trim()
-    if (!normalized) return false
+    if (normalized.length === 0) return false
 
     if (this.isLabelNameDuplicate(normalized, kind)) return false
 
@@ -115,7 +120,7 @@ export class LabelManager {
     if (index === -1) return false
 
     const normalized = label.name.trim()
-    if (!normalized) return false
+    if (normalized.length === 0) return false
 
     if (this.isLabelNameDuplicate(normalized, kind, label.id)) return false
 
@@ -179,7 +184,7 @@ export class LabelManager {
   static updateLabelOrder(labelId: number, newOrder: number, kind: LabelKind = 'event'): boolean {
     const labels = this.getLabelsByKind(kind)
     const label = labels.find(l => l.id === labelId)
-    if (!label) return false
+    if (label == null) return false
 
     const oldOrder = label.sortOrder
     if (oldOrder === newOrder) return true
@@ -208,20 +213,22 @@ export class LabelManager {
    */
   static getLabelById(labelId: number, kind: LabelKind = 'event'): Label | null {
     const labels = this.getLabelsByKind(kind)
-    return labels.find(l => l.id === labelId) || null
+    const label = labels.find(l => l.id === labelId)
+    return label != null ? label : null
   }
 
   static getLabelByName(name: string, kind: LabelKind = 'event'): Label | null {
     const normalized = name.trim()
-    if (!normalized) return null
+    if (normalized.length === 0) return null
 
     const labels = this.getLabelsByKind(kind)
-    return labels.find(label => label.name === normalized) || null
+    const label = labels.find(item => item.name === normalized)
+    return label != null ? label : null
   }
 
   static isLabelNameDuplicate(name: string, kind: LabelKind = 'event', excludeId: number = 0): boolean {
     const normalized = name.trim()
-    if (!normalized) return false
+    if (normalized.length === 0) return false
 
     const labels = this.getLabelsByKind(kind)
     return labels.some(label => label.id !== excludeId && label.name === normalized)
@@ -233,7 +240,7 @@ export class LabelManager {
     const labels = this.getLabelsByKind(kind)
     const source = labels.find(label => label.id === sourceLabelId)
     const target = labels.find(label => label.id === targetLabelId)
-    if (!source || !target) return false
+    if (source == null || target == null) return false
 
     if (kind === 'event') {
       const events = StorageUtils.getEvents()
@@ -356,9 +363,9 @@ export class LabelManager {
     const nextBudgets = settings.labelMonthlyBudgets
       .filter(item => item.labelId !== sourceLabelId && item.labelId !== targetLabelId)
 
-    if (targetBudget) {
+    if (targetBudget != null) {
       nextBudgets.push(targetBudget)
-    } else if (sourceBudget) {
+    } else if (sourceBudget != null) {
       nextBudgets.push({
         labelId: targetLabelId,
         amount: sourceBudget.amount
@@ -388,7 +395,7 @@ export class LabelManager {
   }
 
   private static replaceLabelIdList(labelIdList: string, sourceLabelId: number, targetLabelId: number): string {
-    if (!labelIdList) return ''
+    if (labelIdList.length === 0) return ''
 
     const nextIds: number[] = []
     labelIdList
@@ -397,7 +404,7 @@ export class LabelManager {
       .filter(id => !Number.isNaN(id))
       .forEach(id => {
         const nextId = id === sourceLabelId ? targetLabelId : id
-        if (!nextIds.includes(nextId)) {
+        if (nextIds.includes(nextId) == false) {
           nextIds.push(nextId)
         }
       })
@@ -448,7 +455,7 @@ export class LabelManager {
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .forEach(label => {
         const normalizedName = label.name.trim()
-        if (!normalizedName) {
+        if (normalizedName.length === 0) {
           changed = true
           return
         }

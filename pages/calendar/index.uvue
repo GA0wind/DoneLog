@@ -13,7 +13,7 @@
 							</view>
 						</picker>
 						<picker class="header-picker month-picker" mode="selector" :range="monthOptions" @change="onMonthChange">
-							<view class="header-picker-inner">
+							<view class="header-picker-inner month-picker-inner">
 								<text class="current-date">{{displayMonth}}月</text>
 								<text class="picker-arrow">▼</text>
 							</view>
@@ -43,7 +43,7 @@
 							}"
 							@click="selectDate(day)"
 						>
-							<text class="day-number">{{day.day}}</text>
+							<text class="day-number" :class="{ selected: isSelected(day), today: isToday(day), 'other-month': !day.isCurrentMonth }">{{day.day}}</text>
 							<view class="event-dot" v-if="hasEvent(day)"></view>
 						</view>
 					</view>
@@ -53,7 +53,7 @@
 
 		<view class="account-section">
 			<view class="section-title">
-				<text>{{selectedDateText}}的收支</text>
+				<text class="section-title-text">{{selectedDateText}}的收支</text>
 			</view>
 			<view class="account-summary-card">
 				<view class="account-summary-item">
@@ -74,7 +74,7 @@
 		<!-- 事件列表 -->
 		<view class="event-section">
 			<view class="section-title">
-				<text>{{selectedDateText}}的事件</text>
+				<text class="section-title-text">{{selectedDateText}}的事件</text>
 			</view>
 			<scroll-view scroll-y class="event-list">
 				<view
@@ -130,11 +130,11 @@
 	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
 	const displayYear = computed(() => {
 		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData ? monthData.year : currentYear.value
+		return monthData != null ? monthData.year : currentYear.value
 	})
 	const displayMonth = computed(() => {
 		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData ? monthData.month : currentMonth.value
+		return monthData != null ? monthData.month : currentMonth.value
 	})
 
 	// 获取选中的日期文本
@@ -304,7 +304,7 @@
 		}
 
 		const monthData = calendarMonths.value[index]
-		if (!monthData) {
+		if (monthData == null) {
 			return
 		}
 
@@ -332,7 +332,7 @@
 	// 获取标签名称
 	// 获取短备注
 	const getShortRemark = (remark: string): string => {
-		if (!remark) return ''
+		if (remark.length === 0) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
 	}
 
@@ -363,7 +363,7 @@
 	}
 
 	const isTerminatedOnDay = (event: Event, dayStart: number): boolean => {
-		if (!event.isTerminated || event.terminatedAt <= 0) {
+		if (event.isTerminated == false || event.terminatedAt <= 0) {
 			return false
 		}
 		return getStartOfDay(event.terminatedAt) === dayStart
@@ -389,7 +389,8 @@
 		if (event.isTerminated) {
 			return false
 		}
-		const dueDateStart = EventManager.getDueDateStart(event, history[0]?.lastCompleteDate || null)
+		const lastRecord = history[0]
+		const dueDateStart = EventManager.getDueDateStart(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
 		return dueDateStart === selectedDayStart
 	}
 
@@ -464,7 +465,7 @@
 		border-color: #eadfd2;
 	}
 
-	.month-picker .header-picker-inner {
+	.month-picker-inner {
 		min-width: 72px;
 		justify-content: center;
 	}
@@ -549,7 +550,7 @@
 		box-shadow: 0 8px 16px rgba(31, 122, 114, 0.18);
 	}
 
-	.calendar-day.selected .day-number {
+	.day-number.selected {
 		color: #fff;
 	}
 
@@ -558,12 +559,12 @@
 		border-radius: 25px;
 	}
 
-	.calendar-day.today .day-number {
+	.day-number.today {
 		color: #1f7a72;
 		font-weight: bold;
 	}
 
-	.calendar-day.other-month .day-number {
+	.day-number.other-month {
 		color: #ccc;
 	}
 
@@ -588,7 +589,7 @@
 		padding: 8px 0;
 	}
 
-	.section-title text {
+	.section-title-text {
 		font-size: 15px;
 		font-weight: bold;
 		color: #24323a;
@@ -676,7 +677,7 @@
 	}
 
 	.account-summary-value {
-		display: block;
+		display: flex;
 		font-size: 18px;
 		font-weight: bold;
 		color: #24323a;

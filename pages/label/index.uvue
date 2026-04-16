@@ -121,7 +121,7 @@
 	}
 
 	const clearLabelError = () => {
-		if (labelError.value) {
+		if (labelError.value.length > 0) {
 			labelError.value = ''
 		}
 	}
@@ -129,7 +129,7 @@
 	// 保存标签
 	const saveLabel = () => {
 		const normalizedName = labelName.value.trim()
-		if (!normalizedName) {
+		if (normalizedName.length === 0) {
 			labelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
@@ -155,7 +155,7 @@
 				id: editingLabelId.value,
 				name: normalizedName,
 				color: labelColor.value,
-				sortOrder: currentLabel?.sortOrder || 0
+				sortOrder: currentLabel != null ? currentLabel.sortOrder : 0
 			}
 			success = LabelManager.updateLabel(label)
 		} else {
@@ -163,7 +163,7 @@
 			success = LabelManager.addLabel(normalizedName, labelColor.value)
 		}
 
-		if (success) {
+		if (success == true) {
 			uni.showToast({
 				title: isEdit.value ? '修改成功' : '添加成功',
 				icon: 'success'
@@ -185,9 +185,9 @@
 			title: '确认删除',
 			content: '确定要删除这个标签吗？',
 			success: (res) => {
-				if (res.confirm) {
+				if (res.confirm == true) {
 					const success = LabelManager.deleteLabel(labelId)
-					if (success) {
+					if (success == true) {
 						uni.showToast({
 							title: '删除成功',
 							icon: 'success'
@@ -219,7 +219,7 @@
 <style>
 	.container {
 		background-color: #f4efe7;
-		min-height: 100vh;
+		flex: 1;
 		padding: 15px;
 		padding-bottom: 100px;
 	}
@@ -241,10 +241,6 @@
 		align-items: center;
 		padding: 16px;
 		border-bottom: 1px solid #f1e6db;
-	}
-
-	.label-item:last-child {
-		border-bottom: none;
 	}
 
 	.label-info {
@@ -306,7 +302,7 @@
 	.add-icon {
 		font-size: 32px;
 		color: #fff;
-		font-weight: 300;
+		font-weight: 400;
 	}
 
 	/* 弹窗 */
@@ -350,7 +346,7 @@
 	}
 
 	.label {
-		display: block;
+		display: flex;
 		font-size: 14px;
 		color: #4e5b67;
 		margin-bottom: 8px;
@@ -407,7 +403,15 @@
 		border-top: 1px solid #f0f0f0;
 	}
 
-	.cancel-btn, .confirm-btn {
+	.cancel-btn {
+		flex: 1;
+		height: 40px;
+		line-height: 40px;
+		border-radius: 20px;
+		font-size: 16px;
+	}
+
+	.confirm-btn {
 		flex: 1;
 		height: 40px;
 		line-height: 40px;

@@ -18,7 +18,7 @@ export class StorageUtils {
   static getEvents(): Event[] {
     try {
       const data = uni.getStorageSync(this.EVENTS_KEY)
-      if (!data) {
+      if (data == null || data === '') {
         return []
       }
       const parsed = JSON.parse(data)
@@ -48,7 +48,7 @@ export class StorageUtils {
   static getCompletionRecords(): CompletionRecord[] {
     try {
       const data = uni.getStorageSync(this.COMPLETION_RECORDS_KEY)
-      if (!data) {
+      if (data == null || data === '') {
         return []
       }
       const parsed = JSON.parse(data)
@@ -78,13 +78,13 @@ export class StorageUtils {
   static getEventLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.EVENT_LABELS_KEY)
-      if (data) {
+      if (data != null && data !== '') {
         const parsed = JSON.parse(data)
         return Array.isArray(parsed) ? parsed as Label[] : []
       }
 
       const legacyData = uni.getStorageSync(this.LEGACY_LABELS_KEY)
-      const parsedLegacy = legacyData ? JSON.parse(legacyData) : []
+      const parsedLegacy = legacyData != null && legacyData !== '' ? JSON.parse(legacyData) : []
       const labels: Label[] = Array.isArray(parsedLegacy) ? parsedLegacy as Label[] : []
       if (labels.length > 0) {
         uni.setStorageSync(this.EVENT_LABELS_KEY, JSON.stringify(labels))
@@ -115,7 +115,7 @@ export class StorageUtils {
   static getAccountLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_LABELS_KEY)
-      if (!data) {
+      if (data == null || data === '') {
         return []
       }
       const parsed = JSON.parse(data)
@@ -145,7 +145,7 @@ export class StorageUtils {
   static getAccountEntries(): AccountEntry[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_ENTRIES_KEY)
-      const parsed = data ? JSON.parse(data) : []
+      const parsed = data != null && data !== '' ? JSON.parse(data) : []
       const entries: any[] = Array.isArray(parsed) ? parsed : []
       return entries.map((entry: any) => ({
         ...entry,
@@ -175,12 +175,12 @@ export class StorageUtils {
   static getBudgetSettings(): BudgetSettings {
     try {
       const data = uni.getStorageSync(this.BUDGET_SETTINGS_KEY)
-      if (!data) {
+      if (data == null || data === '') {
         return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
       }
 
       const parsed = JSON.parse(data)
-      if (!parsed) {
+      if (parsed == null) {
         return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
       }
 
@@ -217,11 +217,11 @@ export class StorageUtils {
   static getAppMeta(): AppMeta {
     try {
       const data = uni.getStorageSync(this.APP_META_KEY)
-      if (!data) {
+      if (data == null || data === '') {
         return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
       }
       const parsed = JSON.parse(data)
-      if (parsed) {
+      if (parsed != null) {
         return {
           intervalSemanticsVersion: parsed.intervalSemanticsVersion != null ? parsed.intervalSemanticsVersion : 0,
           defaultLabelsVersion: parsed.defaultLabelsVersion != null ? parsed.defaultLabelsVersion : 0
@@ -261,7 +261,7 @@ export class StorageUtils {
   static importData(payload: string): boolean {
     try {
       const parsed = JSON.parse(payload)
-      if (!parsed) {
+      if (parsed == null) {
         return false
       }
 
@@ -270,7 +270,7 @@ export class StorageUtils {
       const eventLabels = Array.isArray(parsed.eventLabels) ? parsed.eventLabels as Label[] : []
       const accountLabels = Array.isArray(parsed.accountLabels) ? parsed.accountLabels as Label[] : []
       const accountEntries = Array.isArray(parsed.accountEntries) ? parsed.accountEntries as AccountEntry[] : []
-      const budgetSettings = parsed.budgetSettings
+      const budgetSettings = parsed.budgetSettings != null
         ? {
           monthlyExpenseBudget: parsed.budgetSettings.monthlyExpenseBudget != null ? parsed.budgetSettings.monthlyExpenseBudget : 0,
           labelMonthlyBudgets: Array.isArray(parsed.budgetSettings.labelMonthlyBudgets)
@@ -284,7 +284,7 @@ export class StorageUtils {
           updateTime: parsed.budgetSettings.updateTime != null ? parsed.budgetSettings.updateTime : 0
         }
         : { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
-      const appMeta = parsed.appMeta
+      const appMeta = parsed.appMeta != null
         ? {
           intervalSemanticsVersion: parsed.appMeta.intervalSemanticsVersion != null ? parsed.appMeta.intervalSemanticsVersion : 0,
           defaultLabelsVersion: parsed.appMeta.defaultLabelsVersion != null ? parsed.appMeta.defaultLabelsVersion : 0
@@ -321,6 +321,16 @@ export type Event = {
   updateTime: number
 }
 
+export type EventInput = {
+  name: string
+  labelIdList: string
+  intervalDays: number
+  nextDueDate: number
+  remark: string
+  isTerminated: boolean
+  terminatedAt: number
+}
+
 /**
  * 事件完成记录类型定义
  */
@@ -353,6 +363,14 @@ export type AccountEntry = {
   occurredAt: number
   createTime: number
   updateTime: number
+}
+
+export type AccountEntryInput = {
+  type: 'expense' | 'income'
+  amount: number
+  labelIdList: string
+  remark: string
+  occurredAt: number
 }
 
 export type LabelBudgetSetting = {

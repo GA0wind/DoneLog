@@ -2,7 +2,7 @@
 	<view class="container">
 		<view class="hero-card">
 			<text class="hero-kicker">完成确认</text>
-			<text class="hero-title">{{event?.name}}</text>
+			<text class="hero-title">{{eventName}}</text>
 			<text class="hero-desc">{{heroDesc}}</text>
 		</view>
 
@@ -34,11 +34,11 @@
 				<radio-group @change="onRepeatTypeChange">
 					<label class="mini-option" :class="{ active: repeatType === 'date' }">
 						<radio value="date" :checked="repeatType === 'date'" color="#1F7A72" />
-						<text>指定日期</text>
+						<text class="mini-option-text">指定日期</text>
 					</label>
 					<label class="mini-option" :class="{ active: repeatType === 'interval' }">
 						<radio value="interval" :checked="repeatType === 'interval'" color="#1F7A72" />
-						<text>间隔天数</text>
+						<text class="mini-option-text">间隔天数</text>
 					</label>
 				</radio-group>
 
@@ -46,7 +46,7 @@
 					<text class="label">下次完成日期</text>
 					<picker mode="date" :value="nextDueDate" @change="onDateChange">
 						<view class="picker">
-							<text>{{nextDueDate || '请选择日期'}}</text>
+							<text>{{nextDueDate.length > 0 ? nextDueDate : '请选择日期'}}</text>
 						</view>
 					</picker>
 				</view>
@@ -76,8 +76,11 @@
 	const repeatType = ref<'date' | 'interval'>('date')
 	const nextDueDate = ref('')
 	const intervalDays = ref('')
+	const eventName = computed(() => {
+		return event.value != null ? event.value.name : ''
+	})
 	const heroDesc = computed(() => {
-		if (!event.value) {
+		if (event.value == null) {
 			return ''
 		}
 		if (event.value.intervalDays >= 0 && event.value.nextDueDate === 0) {
@@ -96,7 +99,7 @@
 
 	const loadEvent = () => {
 		const current = EventManager.getEventById(eventId.value)
-		if (!current) {
+		if (current == null) {
 			uni.showToast({
 				title: '事件不存在',
 				icon: 'none'
@@ -134,10 +137,10 @@
 	}
 
 	const submitCompletion = () => {
-		if (!event.value) return
+		if (event.value == null) return
 
 		if (shouldContinue.value) {
-			if (repeatType.value === 'date' && !nextDueDate.value) {
+			if (repeatType.value === 'date' && nextDueDate.value.length === 0) {
 				uni.showToast({
 					title: '请选择下次完成日期',
 					icon: 'none'
@@ -158,7 +161,7 @@
 		}
 
 		const completeSuccess = EventManager.markEventComplete(eventId.value)
-		if (!completeSuccess) {
+		if (completeSuccess == false) {
 			uni.showToast({
 				title: '今天已完成过或事件不可操作',
 				icon: 'none'
@@ -166,9 +169,9 @@
 			return
 		}
 
-		if (!shouldContinue.value) {
+		if (shouldContinue.value == false) {
 			const terminateSuccess = EventManager.terminateEvent(eventId.value)
-			if (terminateSuccess) {
+			if (terminateSuccess == true) {
 				uni.showToast({
 					title: '已完成并终止',
 					icon: 'success'
@@ -188,7 +191,7 @@
 			}
 
 			const updateSuccess = EventManager.updateEvent(updatedEvent)
-			if (updateSuccess) {
+			if (updateSuccess == true) {
 				uni.showToast({
 					title: '已完成并安排下一次',
 					icon: 'success'
@@ -207,7 +210,7 @@
 	}
 
 	onLoad((options: any) => {
-		if (!options.id) {
+		if (options.id == null || options.id === '') {
 			uni.showToast({
 				title: '参数错误',
 				icon: 'none'
@@ -225,7 +228,7 @@
 
 <style>
 	.container {
-		min-height: 100vh;
+		flex: 1;
 		padding: 16px;
 		background-color: #f4efe7;
 	}
@@ -271,7 +274,7 @@
 	}
 
 	.section-title {
-		display: block;
+		display: flex;
 		font-size: 15px;
 		font-weight: bold;
 		color: #24323a;
@@ -279,7 +282,7 @@
 	}
 
 	.option-card {
-		display: block;
+		display: flex;
 		background-color: #fffdf9;
 		border-radius: 18px;
 		padding: 14px;
@@ -305,7 +308,7 @@
 	}
 
 	.option-title {
-		display: block;
+		display: flex;
 		font-size: 15px;
 		font-weight: bold;
 		color: #24323a;
@@ -327,7 +330,9 @@
 	}
 
 	.mini-option {
-		display: block;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
 		background-color: #fffdf9;
 		border-radius: 16px;
 		padding: 12px 14px;
@@ -342,9 +347,10 @@
 		background-color: #eef8f6;
 	}
 
-	.mini-option radio,
-	.mini-option text {
-		vertical-align: middle;
+	.mini-option-text {
+		margin-left: 8px;
+		font-size: 14px;
+		color: #24323a;
 	}
 
 	.form-item {
@@ -352,7 +358,7 @@
 	}
 
 	.label {
-		display: block;
+		display: flex;
 		font-size: 14px;
 		color: #4d5b67;
 		margin-bottom: 8px;
