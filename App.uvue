@@ -8,6 +8,66 @@
 	let firstBackTime = 0
 	// #endif
 
+	type WidgetActionPayload = {
+		type: string
+		eventId: number
+	}
+
+	const saveTodayWidgetSnapshot = () => {
+		const now = new Date()
+		const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+		saveWidgetSnapshot(JSON.stringify({
+			items: EventManager.getWidgetSnapshot(),
+			overview: AccountManager.getOverviewByDate(dayStart)
+		}))
+	}
+
+	const handlePendingWidgetAction = () => {
+		const payload = consumePendingWidgetAction()
+		if (payload == null) {
+			return
+		}
+		if (payload.length === 0) {
+			return
+		}
+
+		try {
+			const action = JSON.parse<WidgetActionPayload>(payload)
+			if (action == null || action.type.length === 0) {
+				return
+			}
+
+			const actionType = action.type
+			const actionEventId = action.eventId
+			if (actionType === 'open-complete' && actionEventId > 0) {
+				const event = EventManager.getEventById(actionEventId)
+				if (event == null) {
+					return
+				}
+				if (event.nextDueDate > 0) {
+					uni.navigateTo({
+						url: `/pages/event/complete?id=${actionEventId}&entry=widget`
+					})
+					return
+				}
+				const success = EventManager.markEventComplete(actionEventId)
+				if (success == false) {
+					return
+				}
+				if (event.intervalDays < 0) {
+					EventManager.terminateEvent(actionEventId)
+				}
+				saveTodayWidgetSnapshot()
+				uni.showToast({
+					title: '已完成',
+					icon: 'success'
+				})
+			}
+		} catch (e) {
+			console.error('处理桌面组件动作失败', e)
+		}
+	}
+
 	onLaunch(() => {
 		console.log('App Launch')
 		// 初始化ID
@@ -49,61 +109,6 @@
 		console.log('App Exit')
 	})
 	// #endif
-
-	const handlePendingWidgetAction = () => {
-		const payload = consumePendingWidgetAction()
-		if (payload == null) {
-			return
-		}
-		if (payload.length === 0) {
-			return
-		}
-
-		try {
-			const action = JSON.parse(payload)
-			if (action == null) {
-				return
-			}
-
-			const actionType = action['type'] as string
-			const actionEventId = action['eventId'] as number
-			if (actionType === 'open-complete' && actionEventId > 0) {
-				const event = EventManager.getEventById(actionEventId)
-				if (event == null) {
-					return
-				}
-				if (event.nextDueDate > 0) {
-					uni.navigateTo({
-						url: `/pages/event/complete?id=${actionEventId}&entry=widget`
-					})
-					return
-				}
-				const success = EventManager.markEventComplete(actionEventId)
-				if (success == false) {
-					return
-				}
-				if (event.intervalDays < 0) {
-					EventManager.terminateEvent(actionEventId)
-				}
-				saveTodayWidgetSnapshot()
-				uni.showToast({
-					title: '已完成',
-					icon: 'success'
-				})
-			}
-		} catch (e) {
-			console.error('处理桌面组件动作失败', e)
-		}
-	}
-
-	const saveTodayWidgetSnapshot = () => {
-		const now = new Date()
-		const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-		saveWidgetSnapshot(JSON.stringify({
-			items: EventManager.getWidgetSnapshot(),
-			overview: AccountManager.getOverviewByDate(dayStart)
-		}))
-	}
 </script>
 
 <style>

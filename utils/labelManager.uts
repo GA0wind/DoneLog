@@ -1,4 +1,4 @@
-import { StorageUtils, Label } from './storage.uts'
+import { StorageUtils, Label, Event, AccountEntry, LabelBudgetSetting } from './storage.uts'
 
 export type LabelKind = 'event' | 'account'
 
@@ -146,15 +146,23 @@ export class LabelManager {
 
     if (kind === 'event') {
       const events = StorageUtils.getEvents()
-      const updatedEvents = events.map(event => {
+      const updatedEvents = events.map((event): Event => {
         const labelIds = event.labelIdList
           .split(',')
           .map(id => parseInt(id))
           .filter(id => !Number.isNaN(id) && id !== labelId)
 
         return {
-          ...event,
-          labelIdList: labelIds.join(',')
+          id: event.id,
+          name: event.name,
+          labelIdList: labelIds.join(','),
+          intervalDays: event.intervalDays,
+          nextDueDate: event.nextDueDate,
+          remark: event.remark,
+          isTerminated: event.isTerminated,
+          terminatedAt: event.terminatedAt,
+          createTime: event.createTime,
+          updateTime: event.updateTime
         }
       })
 
@@ -162,15 +170,21 @@ export class LabelManager {
     }
 
     const entries = StorageUtils.getAccountEntries()
-    const updatedEntries = entries.map(entry => {
+    const updatedEntries = entries.map((entry): AccountEntry => {
       const labelIds = entry.labelIdList
         .split(',')
         .map(id => parseInt(id))
         .filter(id => !Number.isNaN(id) && id !== labelId)
 
       return {
-        ...entry,
-        labelIdList: labelIds.join(',')
+        id: entry.id,
+        type: entry.type,
+        amount: entry.amount,
+        labelIdList: labelIds.join(','),
+        remark: entry.remark,
+        occurredAt: entry.occurredAt,
+        createTime: entry.createTime,
+        updateTime: entry.updateTime
       }
     })
     const saveEntriesSuccess = StorageUtils.saveAccountEntries(updatedEntries)
@@ -244,16 +258,30 @@ export class LabelManager {
 
     if (kind === 'event') {
       const events = StorageUtils.getEvents()
-      const updatedEvents = events.map(event => ({
-        ...event,
-        labelIdList: this.replaceLabelIdList(event.labelIdList, sourceLabelId, targetLabelId)
+      const updatedEvents = events.map((event): Event => ({
+        id: event.id,
+        name: event.name,
+        labelIdList: this.replaceLabelIdList(event.labelIdList, sourceLabelId, targetLabelId),
+        intervalDays: event.intervalDays,
+        nextDueDate: event.nextDueDate,
+        remark: event.remark,
+        isTerminated: event.isTerminated,
+        terminatedAt: event.terminatedAt,
+        createTime: event.createTime,
+        updateTime: event.updateTime
       }))
       if (!StorageUtils.saveEvents(updatedEvents)) return false
     } else {
       const entries = StorageUtils.getAccountEntries()
-      const updatedEntries = entries.map(entry => ({
-        ...entry,
-        labelIdList: this.replaceLabelIdList(entry.labelIdList, sourceLabelId, targetLabelId)
+      const updatedEntries = entries.map((entry): AccountEntry => ({
+        id: entry.id,
+        type: entry.type,
+        amount: entry.amount,
+        labelIdList: this.replaceLabelIdList(entry.labelIdList, sourceLabelId, targetLabelId),
+        remark: entry.remark,
+        occurredAt: entry.occurredAt,
+        createTime: entry.createTime,
+        updateTime: entry.updateTime
       }))
       if (!StorageUtils.saveAccountEntries(updatedEntries)) return false
       if (!this.mergeAccountLabelBudget(sourceLabelId, targetLabelId)) return false
@@ -262,8 +290,10 @@ export class LabelManager {
     const remainingLabels = labels
       .filter(label => label.id !== sourceLabelId)
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((label, index) => ({
-        ...label,
+      .map((label, index): Label => ({
+        id: label.id,
+        name: label.name,
+        color: label.color,
         sortOrder: index + 1
       }))
 
@@ -304,7 +334,7 @@ export class LabelManager {
 
   private static buildDefaultLabels(kind: LabelKind): Label[] {
     const defaults = kind === 'event' ? this.defaultEventLabels : this.defaultAccountLabels
-    return defaults.map((item, index) => ({
+    return defaults.map((item, index): Label => ({
       id: index + 1,
       name: item.name,
       color: item.color,
@@ -325,17 +355,31 @@ export class LabelManager {
   private static clearLabelReferences(kind: LabelKind): boolean {
     if (kind === 'event') {
       const events = StorageUtils.getEvents()
-      const updatedEvents = events.map(event => ({
-        ...event,
-        labelIdList: ''
+      const updatedEvents = events.map((event): Event => ({
+        id: event.id,
+        name: event.name,
+        labelIdList: '',
+        intervalDays: event.intervalDays,
+        nextDueDate: event.nextDueDate,
+        remark: event.remark,
+        isTerminated: event.isTerminated,
+        terminatedAt: event.terminatedAt,
+        createTime: event.createTime,
+        updateTime: event.updateTime
       }))
       return StorageUtils.saveEvents(updatedEvents)
     }
 
     const entries = StorageUtils.getAccountEntries()
-    const updatedEntries = entries.map(entry => ({
-      ...entry,
-      labelIdList: ''
+    const updatedEntries = entries.map((entry): AccountEntry => ({
+      id: entry.id,
+      type: entry.type,
+      amount: entry.amount,
+      labelIdList: '',
+      remark: entry.remark,
+      occurredAt: entry.occurredAt,
+      createTime: entry.createTime,
+      updateTime: entry.updateTime
     }))
     const saveEntriesSuccess = StorageUtils.saveAccountEntries(updatedEntries)
     if (!saveEntriesSuccess) return false
@@ -387,9 +431,11 @@ export class LabelManager {
       return true
     }
 
+    const emptyBudgets: LabelBudgetSetting[] = []
+
     return StorageUtils.saveBudgetSettings({
       ...settings,
-      labelMonthlyBudgets: [],
+      labelMonthlyBudgets: emptyBudgets,
       updateTime: Date.now()
     })
   }

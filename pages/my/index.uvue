@@ -167,7 +167,7 @@
 <script setup lang="uts">
 	import { EventManager, EventLabelStats, EventWidgetItem, StatsPeriod } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { AccountManager, AccountLabelStats } from '@/utils/accountManager.uts'
+	import { AccountManager, AccountLabelStats, AccountOverview, BudgetOverview } from '@/utils/accountManager.uts'
 	import { Label, StorageUtils } from '@/utils/storage.uts'
 
 	EventManager.initIds()
@@ -179,9 +179,9 @@
 	const accountLabels = ref<Label[]>([])
 	const eventStats = ref<EventLabelStats[]>([])
 	const accountStats = ref<AccountLabelStats[]>([])
-	const accountOverview = ref({ income: 0, expense: 0, count: 0 })
-	const budgetOverview = ref({ monthlyExpenseBudget: 0, usedAmount: 0, remainingAmount: 0, usedPercent: 0, isOverBudget: false })
-	const todayWidgetOverview = ref({ income: 0, expense: 0, count: 0 })
+	const accountOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
+	const budgetOverview = ref<BudgetOverview>({ monthlyExpenseBudget: 0, usedAmount: 0, remainingAmount: 0, usedPercent: 0, isOverBudget: false })
+	const todayWidgetOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
 	const widgetEvents = ref<EventWidgetItem[]>([])
 	const showImportModal = ref(false)
 	const importText = ref('')

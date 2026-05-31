@@ -1,4 +1,5 @@
 import Context from 'android.content.Context'
+import SharedPreferences from 'android.content.SharedPreferences'
 import Intent from 'android.content.Intent'
 import Activity from 'android.app.Activity'
 import Bundle from 'android.os.Bundle'
@@ -37,11 +38,11 @@ function getPrefs(context: Context) {
 	return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 }
 
-function getLayoutId(context: Context): number {
+function getLayoutId(context: Context): Int {
 	return context.getResources().getIdentifier('donelog_widget', 'layout', context.getPackageName())
 }
 
-function getViewId(context: Context, name: string): number {
+function getViewId(context: Context, name: string): Int {
 	return context.getResources().getIdentifier(name, 'id', context.getPackageName())
 }
 
@@ -58,10 +59,10 @@ function parseSnapshot(snapshot: string): WidgetPayload {
 	}
 
 	try {
-		const parsed = JSON.parse(snapshot)
-		if (Array.isArray(parsed)) {
+		const parsedArray = JSON.parseArray<WidgetItem>(snapshot)
+		if (parsedArray != null) {
 			return {
-				items: parsed as WidgetItem[],
+				items: parsedArray,
 				overview: {
 					income: 0,
 					expense: 0,
@@ -69,20 +70,24 @@ function parseSnapshot(snapshot: string): WidgetPayload {
 				}
 			}
 		}
-		return parsed as WidgetPayload
+		const parsed = JSON.parse<WidgetPayload>(snapshot)
+		if (parsed != null) {
+			return parsed
+		}
 	} catch (e) {
-		return {
-			items: [],
-			overview: {
-				income: 0,
-				expense: 0,
-				count: 0
-			}
+	}
+
+	return {
+		items: [],
+		overview: {
+			income: 0,
+			expense: 0,
+			count: 0
 		}
 	}
 }
 
-function buildActionIntent(context: Context, eventId: number): PendingIntent {
+function buildActionIntent(context: Context, eventId: Int): PendingIntent {
 	const intent = new Intent()
 	intent.setClassName(context, 'uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity')
 	intent.putExtra('eventId', eventId)
@@ -95,7 +100,7 @@ function buildActionIntent(context: Context, eventId: number): PendingIntent {
 	)
 }
 
-function applyRow(context: Context, views: RemoteViews, index: number, item: WidgetItem | null): void {
+function applyRow(context: Context, views: RemoteViews, index: Int, item: WidgetItem | null): void {
 	const rowId = getViewId(context, `row_${index}`)
 	const nameId = getViewId(context, `row_${index}_name`)
 	const statusId = getViewId(context, `row_${index}_status`)
@@ -109,7 +114,7 @@ function applyRow(context: Context, views: RemoteViews, index: number, item: Wid
 	views.setViewVisibility(rowId, View.VISIBLE)
 	views.setTextViewText(nameId, item.name)
 	views.setTextViewText(statusId, item.statusText)
-	const pendingIntent = buildActionIntent(context, item.id)
+	const pendingIntent = buildActionIntent(context, item.id.toInt())
 	views.setOnClickPendingIntent(rowId, pendingIntent)
 	views.setOnClickPendingIntent(actionId, pendingIntent)
 }
@@ -132,7 +137,7 @@ function updateWidgetViews(context: Context): void {
 		views.setTextViewText(subtitleId, `今日收支 ¥${payload.overview.expense.toFixed(2)} / ¥${payload.overview.income.toFixed(2)}`)
 	}
 
-	for (let index = 1; index <= 4; index++) {
+	for (let index: Int = 1; index <= 4; index++) {
 		const item = index <= items.length ? items[index - 1] : null
 		applyRow(context, views, index, item)
 	}

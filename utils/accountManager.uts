@@ -194,7 +194,7 @@ export class AccountManager {
 
     return settings.labelMonthlyBudgets
       .filter(budget => budget.labelId > 0 && budget.amount > 0)
-      .map(budget => {
+      .map((budget): LabelBudgetOverview => {
         const stat = stats.find(item => item.labelId === budget.labelId)
         const usedAmount = stat != null ? stat.totalAmount : 0
         const remainingAmount = budget.amount - usedAmount
@@ -231,7 +231,7 @@ export class AccountManager {
       const labelIds = this.parseLabelIds(entry.labelIdList)
       if (labelIds.length === 0) {
         const cached = statsMap.get(0)
-        const current = cached != null
+        const current: AccountLabelStats = cached != null
           ? cached
           : { labelId: 0, count: 0, totalAmount: 0, type }
         current.count += 1
@@ -242,7 +242,7 @@ export class AccountManager {
 
       labelIds.forEach(labelId => {
         const cached = statsMap.get(labelId)
-        const current = cached != null
+        const current: AccountLabelStats = cached != null
           ? cached
           : { labelId, count: 0, totalAmount: 0, type }
         current.count += 1
@@ -251,7 +251,11 @@ export class AccountManager {
       })
     })
 
-    return Array.from(statsMap.values()).sort((a, b) => b.totalAmount - a.totalAmount)
+    const results: AccountLabelStats[] = []
+    statsMap.forEach((entry) => {
+      results.push(entry.value)
+    })
+    return results.sort((a, b) => b.totalAmount - a.totalAmount)
   }
 
   private static getOverviewByRange(entries: AccountEntry[], start: number, end: number): AccountOverview {

@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="hero-card">
 			<text class="hero-kicker">完成确认</text>
 			<text class="hero-title">{{eventName}}</text>
@@ -63,7 +63,7 @@
 			<button class="ghost-btn" @click="goBack">返回</button>
 			<button class="confirm-btn" @click="submitCompletion">确认完成</button>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -89,11 +89,28 @@
 		return '这个事项使用的是指定日期模式。完成后，你可以终止，也可以继续安排下一次。'
 	})
 
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail[key]
+		return value != null ? `${value}` : ''
+	}
+
+	const getOptionString = (options: UTSJSONObject, key: string): string => {
+		const value = options[key]
+		return value != null ? `${value}` : ''
+	}
+
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
-		const month = String(date.getMonth() + 1).padStart(2, '0')
-		const day = String(date.getDate()).padStart(2, '0')
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
 		return `${year}-${month}-${day}`
 	}
 
@@ -116,20 +133,20 @@
 			nextDueDate.value = formatDate(current.nextDueDate)
 		} else {
 			repeatType.value = 'interval'
-			intervalDays.value = String(current.intervalDays)
+			intervalDays.value = `${current.intervalDays}`
 		}
 	}
 
-	const onContinueChange = (e: any) => {
-		shouldContinue.value = e.detail.value === 'continue'
+	const onContinueChange = (e: UTSJSONObject) => {
+		shouldContinue.value = getDetailStringValue(e, 'value') === 'continue'
 	}
 
-	const onRepeatTypeChange = (e: any) => {
-		repeatType.value = e.detail.value
+	const onRepeatTypeChange = (e: UTSJSONObject) => {
+		repeatType.value = getDetailStringValue(e, 'value') === 'interval' ? 'interval' : 'date'
 	}
 
-	const onDateChange = (e: any) => {
-		nextDueDate.value = e.detail.value
+	const onDateChange = (e: UTSJSONObject) => {
+		nextDueDate.value = getDetailStringValue(e, 'value')
 	}
 
 	const goBack = () => {
@@ -182,12 +199,18 @@
 				return
 			}
 		} else {
+			const current = event.value
 			const updatedEvent: Event = {
-				...event.value,
+				id: current.id,
+				name: current.name,
+				labelIdList: current.labelIdList,
 				intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
 				nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
+				remark: current.remark,
 				isTerminated: false,
-				terminatedAt: 0
+				terminatedAt: 0,
+				createTime: current.createTime,
+				updateTime: current.updateTime
 			}
 
 			const updateSuccess = EventManager.updateEvent(updatedEvent)
@@ -209,8 +232,9 @@
 		})
 	}
 
-	onLoad((options: any) => {
-		if (options.id == null || options.id === '') {
+	onLoad((options: UTSJSONObject) => {
+		const id = getOptionString(options, 'id')
+		if (id.length === 0) {
 			uni.showToast({
 				title: '参数错误',
 				icon: 'none'
@@ -221,7 +245,7 @@
 			return
 		}
 
-		eventId.value = parseInt(options.id)
+		eventId.value = parseInt(id)
 		loadEvent()
 	})
 </script>

@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<!-- 标签列表 -->
 		<view class="label-list">
 			<view 
@@ -60,7 +60,7 @@
 				</view>
 			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">

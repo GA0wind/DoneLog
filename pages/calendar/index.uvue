@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="calendar-shell">
 			<!-- 日历头部 -->
 			<view class="calendar-header">
@@ -76,7 +76,7 @@
 			<view class="section-title">
 				<text class="section-title-text">{{selectedDateText}}的事件</text>
 			</view>
-			<scroll-view scroll-y class="event-list">
+			<view class="event-list">
 				<view
 					class="event-card"
 					v-for="event in filteredEvents"
@@ -89,16 +89,16 @@
 							{{getEventStatusText(event)}}
 						</text>
 					</view>
-					<view class="event-remark" v-if="event.remark">
+					<view class="event-remark" v-if="event.remark.length > 0">
 						<text class="remark-text">{{getShortRemark(event.remark)}}</text>
 					</view>
 				</view>
 				<view class="empty-tip" v-if="filteredEvents.length === 0">
 					<text>暂无事件</text>
 				</view>
-			</scroll-view>
+			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -107,69 +107,70 @@
 	import { AccountManager, AccountOverview } from '@/utils/accountManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
 
-	// 初始化ID
+	type SelectedDate = {
+		year: number
+		month: number
+		day: number
+	}
+
+	type CalendarDay = {
+		year: number
+		month: number
+		day: number
+		isCurrentMonth: boolean
+		fullDate: number
+	}
+
+	type CalendarMonth = {
+		year: number
+		month: number
+		days: CalendarDay[]
+	}
+
+	type YearMonth = {
+		year: number
+		month: number
+	}
+
 	EventManager.initIds()
 	LabelManager.initIds()
 
-	// 响应式数据
 	const events = ref<Event[]>([])
 	const labels = ref<Label[]>([])
 	const selectedDateOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
 	const currentYear = ref(new Date().getFullYear())
 	const currentMonth = ref(new Date().getMonth() + 1)
-	const selectedDate = ref({
+	const selectedDate = ref<SelectedDate>({
 		year: new Date().getFullYear(),
 		month: new Date().getMonth() + 1,
 		day: new Date().getDate()
 	})
 	const swiperIndex = ref(0)
 	const swiperDuration = ref(300)
-	const calendarMonths = ref<any[]>([])
+	const calendarMonths = ref<CalendarMonth[]>([])
 	const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 	const yearOptions = Array.from({ length: 101 }, (_, index) => `${2000 + index}年`)
 	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
-	const displayYear = computed(() => {
-		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData != null ? monthData.year : currentYear.value
-	})
-	const displayMonth = computed(() => {
-		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData != null ? monthData.month : currentMonth.value
-	})
 
-	// 获取选中的日期文本
-	const selectedDateText = computed(() => {
-		return `${selectedDate.value.year}年${selectedDate.value.month}月${selectedDate.value.day}日`
-	})
-
-	// 加载数据
-	const loadData = () => {
-		events.value = EventManager.getSortedEvents(true, null)
-		labels.value = LabelManager.getSortedLabels()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-		generateCalendar()
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
 	}
 
-	// 生成日历
-	const generateCalendar = () => {
-		const months: any[] = []
-		for (let i = -1; i <= 1; i++) {
-			const offsetResult = getOffsetYearMonth(currentYear.value, currentMonth.value, i)
-			months.push(generateMonthDays(offsetResult.year, offsetResult.month))
-		}
-		calendarMonths.value = months
-		swiperIndex.value = 1
+	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail[key]
+		return value != null ? `${value}` : ''
 	}
 
-	const generateCalendarSilently = () => {
-		swiperDuration.value = 0
-		generateCalendar()
-		setTimeout(() => {
-			swiperDuration.value = 300
-		}, 0)
+	const getDetailNumberValue = (e: UTSJSONObject, key: string): number => {
+		const value = getDetailStringValue(e, key)
+		const parsed = parseInt(value)
+		return Number.isNaN(parsed) ? 0 : parsed
 	}
 
-	const getOffsetYearMonth = (year: number, month: number, offset: number) => {
+	const getOffsetYearMonth = (year: number, month: number, offset: number): YearMonth => {
 		const date = new Date(year, month - 1 + offset, 1)
 		return {
 			year: date.getFullYear(),
@@ -177,16 +178,13 @@
 		}
 	}
 
-	// 生成某月的日期
-	const generateMonthDays = (year: number, month: number) => {
-		const days: any[] = []
+	const generateMonthDays = (year: number, month: number): CalendarMonth => {
+		const days: CalendarDay[] = []
 		const firstDay = new Date(year, month - 1, 1)
 		const lastDay = new Date(year, month, 0)
 		const prevLastDay = new Date(year, month - 1, 0)
-
 		const startWeekday = firstDay.getDay()
 
-		// 上个月的日期
 		for (let i = startWeekday - 1; i >= 0; i--) {
 			days.push({
 				year: month === 1 ? year - 1 : year,
@@ -197,18 +195,16 @@
 			})
 		}
 
-		// 当前月的日期
 		for (let i = 1; i <= lastDay.getDate(); i++) {
 			days.push({
-				year: year,
-				month: month,
+				year,
+				month,
 				day: i,
 				isCurrentMonth: true,
 				fullDate: new Date(year, month - 1, i).getTime()
 			})
 		}
 
-		// 下个月的日期
 		const remainingDays = 42 - days.length
 		for (let i = 1; i <= remainingDays; i++) {
 			days.push({
@@ -223,121 +219,13 @@
 		return { year, month, days }
 	}
 
-	const syncSelectedDateToCurrentMonth = () => {
-		const lastDay = new Date(currentYear.value, currentMonth.value, 0).getDate()
-		selectedDate.value = {
-			year: currentYear.value,
-			month: currentMonth.value,
-			day: Math.min(selectedDate.value.day, lastDay)
-		}
-	}
-
-	// 判断是否是选中的日期
-	const isSelected = (day: any): boolean => {
-		return day.year === selectedDate.value.year && 
-		       day.month === selectedDate.value.month && 
-		       day.day === selectedDate.value.day
-	}
-
-	// 判断是否是今天
-	const isToday = (day: any): boolean => {
-		const now = new Date()
-		return day.year === now.getFullYear() && 
-		       day.month === now.getMonth() + 1 && 
-		       day.day === now.getDate()
-	}
-
-	// 判断某天是否有事件
-	const hasEvent = (day: any): boolean => {
-		const dayStart = new Date(day.year, day.month - 1, day.day).getTime()
-		return events.value.some(event => isEventRelevantOnDate(event, dayStart))
-	}
-
-	// 选择日期
-	const selectDate = (day: any) => {
-		selectedDate.value = {
-			year: day.year,
-			month: day.month,
-			day: day.day
-		}
-		if (!day.isCurrentMonth) {
-			currentYear.value = day.year
-			currentMonth.value = day.month
-			generateCalendarSilently()
-		}
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	// 上一月
-	const prevMonth = () => {
-		currentMonth.value--
-		if (currentMonth.value < 1) {
-			currentMonth.value = 12
-			currentYear.value--
-		}
-		syncSelectedDateToCurrentMonth()
-		generateCalendarSilently()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	// 下一月
-	const nextMonth = () => {
-		currentMonth.value++
-		if (currentMonth.value > 12) {
-			currentMonth.value = 1
-			currentYear.value++
-		}
-		syncSelectedDateToCurrentMonth()
-		generateCalendarSilently()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	// swiper切换
-	const onSwiperChange = (e: any) => {
-		swiperIndex.value = e.detail.current
-	}
-
-	const onSwiperAnimationFinish = (e: any) => {
-		const index = e.detail.current
-		if (index === 1) {
-			return
-		}
-
-		const monthData = calendarMonths.value[index]
-		if (monthData == null) {
-			return
-		}
-
-		currentYear.value = monthData.year
-		currentMonth.value = monthData.month
-		syncSelectedDateToCurrentMonth()
-		generateCalendarSilently()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	const onYearChange = (e: any) => {
-		currentYear.value = 2000 + parseInt(e.detail.value)
-		syncSelectedDateToCurrentMonth()
-		generateCalendarSilently()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	const onMonthChange = (e: any) => {
-		currentMonth.value = parseInt(e.detail.value) + 1
-		syncSelectedDateToCurrentMonth()
-		generateCalendarSilently()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
-	}
-
-	// 获取标签名称
-	// 获取短备注
-	const getShortRemark = (remark: string): string => {
-		if (remark.length === 0) return ''
-		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
-	}
-
 	const getSelectedDateStart = (): number => {
 		return new Date(selectedDate.value.year, selectedDate.value.month - 1, selectedDate.value.day).getTime()
+	}
+
+	const getStartOfDay = (timestamp: number): number => {
+		const date = new Date(timestamp)
+		return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 	}
 
 	const isCompletedOnSelectedDate = (event: Event): boolean => {
@@ -348,20 +236,6 @@
 		return EventManager.isCompletedOnDate(event.id, dayStart)
 	}
 
-	const getEventStatusText = (event: Event): string => {
-		if (isCompletedOnSelectedDate(event)) {
-			return '已完成'
-		}
-		if (isTerminatedOnSelectedDate(event)) {
-			return '已终止'
-		}
-		return '待完成'
-	}
-
-	const isTerminatedOnSelectedDate = (event: Event): boolean => {
-		return isTerminatedOnDay(event, getSelectedDateStart())
-	}
-
 	const isTerminatedOnDay = (event: Event, dayStart: number): boolean => {
 		if (event.isTerminated == false || event.terminatedAt <= 0) {
 			return false
@@ -369,9 +243,8 @@
 		return getStartOfDay(event.terminatedAt) === dayStart
 	}
 
-	const getStartOfDay = (timestamp: number): number => {
-		const date = new Date(timestamp)
-		return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+	const isTerminatedOnSelectedDate = (event: Event): boolean => {
+		return isTerminatedOnDay(event, getSelectedDateStart())
 	}
 
 	const isEventRelevantOnDate = (event: Event, selectedDayStart: number): boolean => {
@@ -394,20 +267,169 @@
 		return dueDateStart === selectedDayStart
 	}
 
-	// 筛选选中日期的事件
-	const filteredEvents = computed(() => {
+	const syncSelectedDateToCurrentMonth = () => {
+		const lastDay = new Date(currentYear.value, currentMonth.value, 0).getDate()
+		selectedDate.value = {
+			year: currentYear.value,
+			month: currentMonth.value,
+			day: Math.min(selectedDate.value.day, lastDay)
+		}
+	}
+
+	const generateCalendar = () => {
+		const months: CalendarMonth[] = []
+		for (let i = -1; i <= 1; i++) {
+			const offsetResult = getOffsetYearMonth(currentYear.value, currentMonth.value, i)
+			months.push(generateMonthDays(offsetResult.year, offsetResult.month))
+		}
+		calendarMonths.value = months
+		swiperIndex.value = 1
+	}
+
+	const generateCalendarSilently = () => {
+		swiperDuration.value = 0
+		generateCalendar()
+		setTimeout(() => {
+			swiperDuration.value = 300
+		}, 0)
+	}
+
+	const loadData = () => {
+		events.value = EventManager.getSortedEvents(true, null)
+		labels.value = LabelManager.getSortedLabels()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+		generateCalendar()
+	}
+
+	const displayYear = computed(() => {
+		const monthData = calendarMonths.value[swiperIndex.value]
+		return monthData != null ? monthData.year : currentYear.value
+	})
+	const displayMonth = computed(() => {
+		const monthData = calendarMonths.value[swiperIndex.value]
+		return monthData != null ? monthData.month : currentMonth.value
+	})
+
+	const selectedDateText = computed(() => {
+		return `${selectedDate.value.year}年${selectedDate.value.month}月${selectedDate.value.day}日`
+	})
+
+	const isSelected = (day: CalendarDay): boolean => {
+		return day.year === selectedDate.value.year
+			&& day.month === selectedDate.value.month
+			&& day.day === selectedDate.value.day
+	}
+
+	const isToday = (day: CalendarDay): boolean => {
+		const now = new Date()
+		return day.year === now.getFullYear()
+			&& day.month === now.getMonth() + 1
+			&& day.day === now.getDate()
+	}
+
+	const hasEvent = (day: CalendarDay): boolean => {
+		const dayStart = new Date(day.year, day.month - 1, day.day).getTime()
+		return events.value.some(event => isEventRelevantOnDate(event, dayStart))
+	}
+
+	const selectDate = (day: CalendarDay) => {
+		selectedDate.value = {
+			year: day.year,
+			month: day.month,
+			day: day.day
+		}
+		if (!day.isCurrentMonth) {
+			currentYear.value = day.year
+			currentMonth.value = day.month
+			generateCalendarSilently()
+		}
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const prevMonth = () => {
+		currentMonth.value--
+		if (currentMonth.value < 1) {
+			currentMonth.value = 12
+			currentYear.value--
+		}
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const nextMonth = () => {
+		currentMonth.value++
+		if (currentMonth.value > 12) {
+			currentMonth.value = 1
+			currentYear.value++
+		}
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const onSwiperChange = (e: UTSJSONObject) => {
+		swiperIndex.value = getDetailNumberValue(e, 'current')
+	}
+
+	const onSwiperAnimationFinish = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e, 'current')
+		if (index === 1) {
+			return
+		}
+
+		const monthData = calendarMonths.value[index]
+		if (monthData == null) {
+			return
+		}
+
+		currentYear.value = monthData.year
+		currentMonth.value = monthData.month
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const onYearChange = (e: UTSJSONObject) => {
+		currentYear.value = 2000 + getDetailNumberValue(e, 'value')
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const onMonthChange = (e: UTSJSONObject) => {
+		currentMonth.value = getDetailNumberValue(e, 'value') + 1
+		syncSelectedDateToCurrentMonth()
+		generateCalendarSilently()
+		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+	}
+
+	const getShortRemark = (remark: string): string => {
+		if (remark.length === 0) return ''
+		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
+	}
+
+	const getEventStatusText = (event: Event): string => {
+		if (isCompletedOnSelectedDate(event)) {
+			return '已完成'
+		}
+		if (isTerminatedOnSelectedDate(event)) {
+			return '已终止'
+		}
+		return '待完成'
+	}
+
+	const filteredEvents = computed<Event[]>(() => {
 		const selectedDateStart = getSelectedDateStart()
 		return events.value.filter(event => isEventRelevantOnDate(event, selectedDateStart))
 	})
 
-	// 跳转到详情页
 	const goToDetail = (eventId: number) => {
 		uni.navigateTo({
 			url: `/pages/event/detail?id=${eventId}`
 		})
 	}
 
-	// 页面显示时加载数据
 	onShow(() => {
 		loadData()
 	})

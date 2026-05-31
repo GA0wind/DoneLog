@@ -1,3 +1,40 @@
+type LegacyEvent = {
+  id: number
+  name: string
+  labelIdList: string
+  intervalDays: number
+  nextDueDate: number
+  remark: string
+  isTerminated: boolean
+  terminatedAt?: number
+  createTime: number
+  updateTime: number
+}
+
+type LegacyAccountEntry = {
+  id: number
+  type: 'expense' | 'income'
+  amount: number
+  labelIdList?: string
+  labelId?: number
+  remark: string
+  occurredAt: number
+  createTime: number
+  updateTime: number
+}
+
+type BackupPayload = {
+  version: number
+  exportedAt: number
+  events: Event[]
+  completionRecords: CompletionRecord[]
+  eventLabels: Label[]
+  accountLabels: Label[]
+  accountEntries: AccountEntry[]
+  budgetSettings: BudgetSettings
+  appMeta: AppMeta
+}
+
 /**
  * 本地存储工具类
  */
@@ -18,11 +55,25 @@ export class StorageUtils {
   static getEvents(): Event[] {
     try {
       const data = uni.getStorageSync(this.EVENTS_KEY)
-      if (data == null || data === '') {
+      if (typeof data !== 'string' || data.length === 0) {
         return []
       }
-      const parsed = JSON.parse(data)
-      return Array.isArray(parsed) ? parsed as Event[] : []
+      const parsed = JSON.parseArray<LegacyEvent>(data)
+      if (parsed == null) {
+        return []
+      }
+      return parsed.map((event): Event => ({
+        id: event.id,
+        name: event.name,
+        labelIdList: event.labelIdList,
+        intervalDays: event.intervalDays,
+        nextDueDate: event.nextDueDate,
+        remark: event.remark,
+        isTerminated: event.isTerminated,
+        terminatedAt: event.terminatedAt != null ? event.terminatedAt : 0,
+        createTime: event.createTime,
+        updateTime: event.updateTime
+      }))
     } catch (e) {
       console.error('获取事件列表失败', e)
       return []
@@ -48,11 +99,11 @@ export class StorageUtils {
   static getCompletionRecords(): CompletionRecord[] {
     try {
       const data = uni.getStorageSync(this.COMPLETION_RECORDS_KEY)
-      if (data == null || data === '') {
+      if (typeof data !== 'string' || data.length === 0) {
         return []
       }
-      const parsed = JSON.parse(data)
-      return Array.isArray(parsed) ? parsed as CompletionRecord[] : []
+      const parsed = JSON.parseArray<CompletionRecord>(data)
+      return parsed != null ? parsed : []
     } catch (e) {
       console.error('获取完成记录失败', e)
       return []
@@ -78,14 +129,15 @@ export class StorageUtils {
   static getEventLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.EVENT_LABELS_KEY)
-      if (data != null && data !== '') {
-        const parsed = JSON.parse(data)
-        return Array.isArray(parsed) ? parsed as Label[] : []
+      if (typeof data === 'string' && data.length > 0) {
+        const parsed = JSON.parseArray<Label>(data)
+        return parsed != null ? parsed : []
       }
 
       const legacyData = uni.getStorageSync(this.LEGACY_LABELS_KEY)
-      const parsedLegacy = legacyData != null && legacyData !== '' ? JSON.parse(legacyData) : []
-      const labels: Label[] = Array.isArray(parsedLegacy) ? parsedLegacy as Label[] : []
+      const labels = typeof legacyData === 'string' && legacyData.length > 0
+        ? (JSON.parseArray<Label>(legacyData) ?? [])
+        : []
       if (labels.length > 0) {
         uni.setStorageSync(this.EVENT_LABELS_KEY, JSON.stringify(labels))
       }
@@ -115,11 +167,11 @@ export class StorageUtils {
   static getAccountLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_LABELS_KEY)
-      if (data == null || data === '') {
+      if (typeof data !== 'string' || data.length === 0) {
         return []
       }
-      const parsed = JSON.parse(data)
-      return Array.isArray(parsed) ? parsed as Label[] : []
+      const parsed = JSON.parseArray<Label>(data)
+      return parsed != null ? parsed : []
     } catch (e) {
       console.error('获取记账标签列表失败', e)
       return []
@@ -145,13 +197,25 @@ export class StorageUtils {
   static getAccountEntries(): AccountEntry[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_ENTRIES_KEY)
-      const parsed = data != null && data !== '' ? JSON.parse(data) : []
-      const entries: any[] = Array.isArray(parsed) ? parsed : []
-      return entries.map((entry: any) => ({
-        ...entry,
+      if (typeof data !== 'string' || data.length === 0) {
+        return []
+      }
+      const entries = JSON.parseArray<LegacyAccountEntry>(data)
+      if (entries == null) {
+        return []
+      }
+      return entries.map((entry): AccountEntry => ({
+        id: entry.id,
+        type: entry.type,
+        amount: entry.amount,
         labelIdList: entry.labelIdList != null
           ? entry.labelIdList
-          : (entry.labelId != null && entry.labelId > 0 ? String(entry.labelId) : '')
+          : (entry.labelId != null && entry.labelId > 0 ? `${entry.labelId}` : '')
+        ,
+        remark: entry.remark,
+        occurredAt: entry.occurredAt,
+        createTime: entry.createTime,
+        updateTime: entry.updateTime
       }))
     } catch (e) {
       console.error('获取记账记录失败', e)
@@ -175,28 +239,21 @@ export class StorageUtils {
   static getBudgetSettings(): BudgetSettings {
     try {
       const data = uni.getStorageSync(this.BUDGET_SETTINGS_KEY)
-      if (data == null || data === '') {
+      if (typeof data !== 'string' || data.length === 0) {
         return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
       }
 
-      const parsed = JSON.parse(data)
+      const parsed = JSON.parse<BudgetSettings>(data)
       if (parsed == null) {
         return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
       }
 
-      const labelMonthlyBudgets: LabelBudgetSetting[] = Array.isArray(parsed.labelMonthlyBudgets)
-        ? (parsed.labelMonthlyBudgets as any[])
-          .map((item: any) => ({
-            labelId: item.labelId != null ? item.labelId : 0,
-            amount: item.amount != null ? item.amount : 0
-          }))
-          .filter((item: LabelBudgetSetting) => item.labelId > 0 && item.amount > 0)
-        : []
+      const labelMonthlyBudgets = parsed.labelMonthlyBudgets.filter((item): boolean => item.labelId > 0 && item.amount > 0)
 
       return {
-        monthlyExpenseBudget: parsed.monthlyExpenseBudget != null ? parsed.monthlyExpenseBudget : 0,
+        monthlyExpenseBudget: parsed.monthlyExpenseBudget,
         labelMonthlyBudgets,
-        updateTime: parsed.updateTime != null ? parsed.updateTime : 0
+        updateTime: parsed.updateTime
       }
     } catch (e) {
       console.error('获取预算设置失败', e)
@@ -217,14 +274,14 @@ export class StorageUtils {
   static getAppMeta(): AppMeta {
     try {
       const data = uni.getStorageSync(this.APP_META_KEY)
-      if (data == null || data === '') {
+      if (typeof data !== 'string' || data.length === 0) {
         return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
       }
-      const parsed = JSON.parse(data)
+      const parsed = JSON.parse<AppMeta>(data)
       if (parsed != null) {
         return {
-          intervalSemanticsVersion: parsed.intervalSemanticsVersion != null ? parsed.intervalSemanticsVersion : 0,
-          defaultLabelsVersion: parsed.defaultLabelsVersion != null ? parsed.defaultLabelsVersion : 0
+          intervalSemanticsVersion: parsed.intervalSemanticsVersion,
+          defaultLabelsVersion: parsed.defaultLabelsVersion
         }
       }
       return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
@@ -260,42 +317,26 @@ export class StorageUtils {
 
   static importData(payload: string): boolean {
     try {
-      const parsed = JSON.parse(payload)
+      const parsed = JSON.parse<BackupPayload>(payload)
       if (parsed == null) {
         return false
       }
 
-      const events = Array.isArray(parsed.events) ? parsed.events as Event[] : []
-      const completionRecords = Array.isArray(parsed.completionRecords) ? parsed.completionRecords as CompletionRecord[] : []
-      const eventLabels = Array.isArray(parsed.eventLabels) ? parsed.eventLabels as Label[] : []
-      const accountLabels = Array.isArray(parsed.accountLabels) ? parsed.accountLabels as Label[] : []
-      const accountEntries = Array.isArray(parsed.accountEntries) ? parsed.accountEntries as AccountEntry[] : []
-      const budgetSettings = parsed.budgetSettings != null
-        ? {
-          monthlyExpenseBudget: parsed.budgetSettings.monthlyExpenseBudget != null ? parsed.budgetSettings.monthlyExpenseBudget : 0,
-          labelMonthlyBudgets: Array.isArray(parsed.budgetSettings.labelMonthlyBudgets)
-            ? (parsed.budgetSettings.labelMonthlyBudgets as any[])
-              .map((item: any) => ({
-                labelId: item.labelId != null ? item.labelId : 0,
-                amount: item.amount != null ? item.amount : 0
-              }))
-              .filter((item: LabelBudgetSetting) => item.labelId > 0 && item.amount > 0)
-            : [],
-          updateTime: parsed.budgetSettings.updateTime != null ? parsed.budgetSettings.updateTime : 0
-        }
-        : { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
-      const appMeta = parsed.appMeta != null
-        ? {
-          intervalSemanticsVersion: parsed.appMeta.intervalSemanticsVersion != null ? parsed.appMeta.intervalSemanticsVersion : 0,
-          defaultLabelsVersion: parsed.appMeta.defaultLabelsVersion != null ? parsed.appMeta.defaultLabelsVersion : 0
-        }
-        : { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
+      const budgetSettings: BudgetSettings = {
+        monthlyExpenseBudget: parsed.budgetSettings.monthlyExpenseBudget,
+        labelMonthlyBudgets: parsed.budgetSettings.labelMonthlyBudgets.filter((item): boolean => item.labelId > 0 && item.amount > 0),
+        updateTime: parsed.budgetSettings.updateTime
+      }
+      const appMeta: AppMeta = {
+        intervalSemanticsVersion: parsed.appMeta.intervalSemanticsVersion,
+        defaultLabelsVersion: parsed.appMeta.defaultLabelsVersion
+      }
 
-      return this.saveEvents(events)
-        && this.saveCompletionRecords(completionRecords)
-        && this.saveEventLabels(eventLabels)
-        && this.saveAccountLabels(accountLabels)
-        && this.saveAccountEntries(accountEntries)
+      return this.saveEvents(parsed.events)
+        && this.saveCompletionRecords(parsed.completionRecords)
+        && this.saveEventLabels(parsed.eventLabels)
+        && this.saveAccountLabels(parsed.accountLabels)
+        && this.saveAccountEntries(parsed.accountEntries)
         && this.saveBudgetSettings(budgetSettings)
         && this.saveAppMeta(appMeta)
     } catch (e) {

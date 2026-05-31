@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
@@ -148,7 +148,7 @@
 				</view>
 			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -184,6 +184,25 @@
 		'#8E8E93', // 灰色
 		'#34C759'  // 深绿
 	]
+
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail[key]
+		return value != null ? `${value}` : ''
+	}
+
+	const getDetailBooleanValue = (e: UTSJSONObject, key: string): boolean => {
+		const detail = getDetailObject(e)
+		if (detail == null) return false
+		const value = detail[key]
+		return value === true
+	}
 
 	// 加载标签列表
 	const loadLabels = () => {
@@ -297,17 +316,22 @@
 	}
 
 	// 重复方式改变
-	const onRepeatTypeChange = (e: any) => {
-		repeatType.value = e.detail.value
+	const onRepeatTypeChange = (e: UTSJSONObject) => {
+		const value = getDetailStringValue(e, 'value')
+		if (value === 'date' || value === 'single') {
+			repeatType.value = value
+			return
+		}
+		repeatType.value = 'interval'
 	}
 
 	// 日期改变
-	const onDateChange = (e: any) => {
-		nextDueDate.value = e.detail.value
+	const onDateChange = (e: UTSJSONObject) => {
+		nextDueDate.value = getDetailStringValue(e, 'value')
 	}
 
-	const onCompletedTodayChange = (e: any) => {
-		isCompletedToday.value = e.detail.value
+	const onCompletedTodayChange = (e: UTSJSONObject) => {
+		isCompletedToday.value = getDetailBooleanValue(e, 'value')
 	}
 
 	// 保存事件

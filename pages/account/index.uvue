@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="summary-card">
 			<view class="summary-item">
 				<text class="summary-value">¥{{monthOverview.expense.toFixed(2)}}</text>
@@ -231,17 +231,17 @@
 				</view>
 			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
-	import { AccountManager, LabelBudgetOverview } from '@/utils/accountManager.uts'
+	import { AccountManager, LabelBudgetOverview, AccountOverview } from '@/utils/accountManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { AccountEntry, Label } from '@/utils/storage.uts'
+	import { AccountEntry, AccountEntryInput, Label } from '@/utils/storage.uts'
 
 	const entries = ref<AccountEntry[]>([])
 	const labels = ref<Label[]>([])
-	const monthOverview = ref({ income: 0, expense: 0, count: 0 })
+	const monthOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
 	const monthlyBudget = ref(0)
 	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
 
@@ -275,12 +275,71 @@
 		'#6D597A'
 	]
 
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailStringValue = (e: UTSJSONObject): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail['value']
+		return value != null ? `${value}` : ''
+	}
+
+	const getDetailNumberValue = (e: UTSJSONObject): number => {
+		const value = getDetailStringValue(e)
+		const parsed = parseInt(value)
+		return Number.isNaN(parsed) ? 0 : parsed
+	}
+
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
-		const month = String(date.getMonth() + 1).padStart(2, '0')
-		const day = String(date.getDate()).padStart(2, '0')
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
 		return `${year}-${month}-${day}`
+	}
+
+	const parseLabelIds = (labelIdList: string): number[] => {
+		if (labelIdList.length === 0) return []
+		return labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id))
+	}
+
+	const getLabelName = (labelId: number): string => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.name : '未知标签'
+	}
+
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.color : '#B7A995'
+	}
+
+	const getLabelSortOrder = (labelId: number): number => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.sortOrder : 9999
+	}
+
+	const getLabelBudgetStatus = (item: LabelBudgetOverview): string => {
+		if (item.isOverBudget) return `超出 ¥${Math.abs(item.remainingAmount).toFixed(2)}`
+		return `剩余 ¥${item.remainingAmount.toFixed(2)}`
+	}
+
+	const getEntryLabelNames = (entry: AccountEntry): string => {
+		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => name.length > 0)
+		return names.length > 0 ? names.join(' / ') : '未分类'
+	}
+
+	const getEntryDisplayDesc = (entry: AccountEntry): string => {
+		if (entry.remark.trim().length > 0) {
+			return entry.remark
+		}
+		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => name.length > 0)
+		return names.length > 0 ? names.join('，') : '无描述'
 	}
 
 	const loadData = () => {
@@ -303,7 +362,7 @@
 		return `还可用 ¥${budgetRemaining.value.toFixed(2)}`
 	})
 
-	const visibleLabelBudgetOverviews = computed(() => {
+	const visibleLabelBudgetOverviews = computed<LabelBudgetOverview[]>(() => {
 		return labelBudgetOverviews.value
 			.filter(item => labels.value.some(label => label.id === item.labelId))
 			.sort((a, b) => getLabelSortOrder(a.labelId) - getLabelSortOrder(b.labelId))
@@ -338,7 +397,7 @@
 	const editEntry = (entry: AccountEntry) => {
 		editingId.value = entry.id
 		formType.value = entry.type
-		formAmount.value = String(entry.amount)
+		formAmount.value = `${entry.amount}`
 		formLabelIds.value = parseLabelIds(entry.labelIdList)
 		formDate.value = formatDate(entry.occurredAt)
 		formRemark.value = entry.remark
@@ -353,7 +412,7 @@
 	}
 
 	const openBudgetModal = () => {
-		budgetAmount.value = monthlyBudget.value > 0 ? String(monthlyBudget.value) : ''
+		budgetAmount.value = monthlyBudget.value > 0 ? `${monthlyBudget.value}` : ''
 		budgetError.value = ''
 		showBudgetModal.value = true
 	}
@@ -365,7 +424,7 @@
 
 	const syncLabelBudgetInput = () => {
 		const amount = AccountManager.getLabelBudgetAmount(selectedBudgetLabelId.value)
-		labelBudgetAmount.value = amount > 0 ? String(amount) : ''
+		labelBudgetAmount.value = amount > 0 ? `${amount}` : ''
 	}
 
 	const openLabelBudgetModal = (labelId: number) => {
@@ -397,8 +456,8 @@
 		}
 	}
 
-	const onLabelBudgetChange = (e: any) => {
-		const index = e.detail.value
+	const onLabelBudgetChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e)
 		if (index < 0 || index >= labels.value.length) return
 		selectedBudgetLabelId.value = labels.value[index].id
 		labelBudgetError.value = ''
@@ -485,20 +544,12 @@
 		}
 	}
 
-	const onTypeChange = (e: any) => {
-		formType.value = e.detail.value
+	const onTypeChange = (e: UTSJSONObject) => {
+		formType.value = getDetailStringValue(e) === 'income' ? 'income' : 'expense'
 	}
 
-	const onDateChange = (e: any) => {
-		formDate.value = e.detail.value
-	}
-
-	const parseLabelIds = (labelIdList: string): number[] => {
-		if (labelIdList.length === 0) return []
-		return labelIdList
-			.split(',')
-			.map(id => parseInt(id))
-			.filter(id => !Number.isNaN(id))
+	const onDateChange = (e: UTSJSONObject) => {
+		formDate.value = getDetailStringValue(e)
 	}
 
 	const toggleFormLabel = (labelId: number) => {
@@ -537,10 +588,8 @@
 
 		labels.value = LabelManager.getSortedLabels('account')
 		const created = labels.value.find(item => item.name === createdName)
-		if (created != null) {
-			if (formLabelIds.value.includes(created.id) == false) {
-				formLabelIds.value.push(created.id)
-			}
+		if (created != null && formLabelIds.value.includes(created.id) == false) {
+			formLabelIds.value.push(created.id)
 		}
 		newLabelName.value = ''
 		newLabelError.value = ''
@@ -556,7 +605,7 @@
 			return
 		}
 
-		const payload = {
+		const payload: AccountEntryInput = {
 			type: formType.value,
 			amount: amount,
 			labelIdList: formLabelIds.value.join(','),
@@ -568,10 +617,17 @@
 		if (editingId.value > 0) {
 			const current = AccountManager.getEntryById(editingId.value)
 			if (current == null) return
-			success = AccountManager.updateEntry({
-				...current,
-				...payload
-			})
+			const updatedEntry: AccountEntry = {
+				id: current.id,
+				type: payload.type,
+				amount: payload.amount,
+				labelIdList: payload.labelIdList,
+				remark: payload.remark,
+				occurredAt: payload.occurredAt,
+				createTime: current.createTime,
+				updateTime: current.updateTime
+			}
+			success = AccountManager.updateEntry(updatedEntry)
 		} else {
 			success = AccountManager.addEntry(payload)
 		}
@@ -595,39 +651,6 @@
 				}
 			}
 		})
-	}
-
-	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(item => item.id === labelId)
-		return label != null ? label.name : '未知标签'
-	}
-
-	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(item => item.id === labelId)
-		return label != null ? label.color : '#B7A995'
-	}
-
-	const getLabelSortOrder = (labelId: number): number => {
-		const label = labels.value.find(item => item.id === labelId)
-		return label != null ? label.sortOrder : 9999
-	}
-
-	const getLabelBudgetStatus = (item: LabelBudgetOverview): string => {
-		if (item.isOverBudget) return `超出 ¥${Math.abs(item.remainingAmount).toFixed(2)}`
-		return `剩余 ¥${item.remainingAmount.toFixed(2)}`
-	}
-
-	const getEntryLabelNames = (entry: AccountEntry): string => {
-		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => name.length > 0)
-		return names.length > 0 ? names.join(' / ') : '未分类'
-	}
-
-	const getEntryDisplayDesc = (entry: AccountEntry): string => {
-		if (entry.remark.trim().length > 0) {
-			return entry.remark
-		}
-		const names = parseLabelIds(entry.labelIdList).map(id => getLabelName(id)).filter(name => name.length > 0)
-		return names.length > 0 ? names.join('，') : '无描述'
 	}
 
 	onShow(() => {

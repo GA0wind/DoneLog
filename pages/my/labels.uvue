@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="tips-card">
 			<text class="tips-title">{{pageTitle}}</text>
 			<text class="tips-desc">支持新增、编辑、删除和上下排序。排序结果会直接影响标签显示顺序。</text>
@@ -85,7 +85,7 @@
 				</view>
 			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -115,11 +115,16 @@
 		'#6D597A'
 	]
 
+	const getOptionString = (options: UTSJSONObject, key: string): string => {
+		const value = options[key]
+		return value != null ? `${value}` : ''
+	}
+
 	const loadLabels = () => {
 		labels.value = LabelManager.getSortedLabels(kind.value)
 	}
 
-	const mergeTargetLabels = computed(() => {
+	const mergeTargetLabels = computed<Label[]>(() => {
 		if (mergeSourceLabel.value == null) return labels.value
 		const source = mergeSourceLabel.value
 		return labels.value.filter(label => label.id !== source.id)
@@ -256,8 +261,8 @@
 		}
 	}
 
-	onLoad((options: any) => {
-		if (options.kind === 'account') {
+	onLoad((options: UTSJSONObject) => {
+		if (getOptionString(options, 'kind') === 'account') {
 			kind.value = 'account'
 		}
 		syncTitle()

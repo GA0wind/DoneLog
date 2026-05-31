@@ -77,13 +77,30 @@
 	const labels = ref<Label[]>([])
 	const rawStats = ref<AccountLabelStats[]>([])
 
+	const getOptionString = (options: UTSJSONObject, key: string): string => {
+		const value = options[key]
+		return value != null ? `${value}` : ''
+	}
+
 	const periodText = computed(() => period.value === 'week' ? '本周' : '本月')
 	const chartTypeText = computed(() => chartType.value === 'expense' ? '支出' : '收入')
 	const totalAmount = computed(() => rawStats.value.reduce((sum, item) => sum + item.totalAmount, 0))
 
+	const getLabelName = (labelId: number): string => {
+		if (labelId === 0) return '未分类'
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.name : '未知标签'
+	}
+
+	const getLabelColor = (labelId: number): string => {
+		if (labelId === 0) return '#B7A995'
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.color : '#1F7A72'
+	}
+
 	const chartStats = computed((): ChartItem[] => {
 		const total = totalAmount.value
-		return rawStats.value.map(item => {
+		return rawStats.value.map((item): ChartItem => {
 			const percent = total > 0 ? item.totalAmount / total : 0
 			return {
 				labelId: item.labelId,
@@ -129,23 +146,11 @@
 		loadData()
 	}
 
-	const getLabelName = (labelId: number): string => {
-		if (labelId === 0) return '未分类'
-		const label = labels.value.find(item => item.id === labelId)
-		return label != null ? label.name : '未知标签'
-	}
-
-	const getLabelColor = (labelId: number): string => {
-		if (labelId === 0) return '#B7A995'
-		const label = labels.value.find(item => item.id === labelId)
-		return label != null ? label.color : '#1F7A72'
-	}
-
-	onLoad((options: any) => {
-		if (options.period === 'month') {
+	onLoad((options: UTSJSONObject) => {
+		if (getOptionString(options, 'period') === 'month') {
 			period.value = 'month'
 		}
-		if (options.type === 'income') {
+		if (getOptionString(options, 'type') === 'income') {
 			chartType.value = 'income'
 		}
 		loadData()
