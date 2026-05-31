@@ -2,7 +2,7 @@
 	<view class="container">
 		<view class="linked-card" v-if="linkedEvent">
 			<text class="linked-kicker">{{linkedEventCompleted ? '事件已完成' : '正在专注'}}</text>
-			<text class="linked-title">{{linkedEvent.name}}</text>
+			<text class="linked-title">{{linkedEventName}}</text>
 			<text class="linked-desc">{{linkedEventCompleted ? '这个事件已经写入完成记录。' : '专注时间结束后会自动完成这个事件。'}}</text>
 		</view>
 
@@ -72,6 +72,11 @@
 	const linkedEventCompleted = ref(false)
 	let timerId = 0
 
+	const getOptionString = (options: UTSJSONObject, key: string): string => {
+		const value = options[key]
+		return value != null ? `${value}` : ''
+	}
+
 	const getDurationSeconds = (value: PomodoroMode): number => {
 		const option = modeOptions.find(item => item.id === value)
 		const minutes = option != null ? option.minutes : 25
@@ -87,13 +92,18 @@
 	const timeText = computed(() => {
 		const minutes = Math.floor(remainingSeconds.value / 60)
 		const seconds = remainingSeconds.value % 60
-		return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+		return `${`${minutes}`.padStart(2, '0')}:${`${seconds}`.padStart(2, '0')}`
 	})
 
 	const modeTitle = computed(() => {
 		if (mode.value === 'short') return '短休息'
 		if (mode.value === 'long') return '长休息'
 		return '专注时间'
+	})
+
+	const linkedEventName = computed(() => {
+		const event = linkedEvent.value
+		return event != null ? event.name : ''
 	})
 
 	const currentRoundText = computed(() => {
@@ -193,9 +203,10 @@
 		finishRound(false)
 	}
 
-	onLoad((options: any) => {
-		if (options.eventId != null && options.eventId !== '') {
-			linkedEventId.value = parseInt(options.eventId)
+	onLoad((options: UTSJSONObject) => {
+		const eventId = getOptionString(options, 'eventId')
+		if (eventId.length > 0) {
+			linkedEventId.value = parseInt(eventId)
 			linkedEvent.value = EventManager.getEventById(linkedEventId.value)
 			const event = linkedEvent.value
 			if (event != null) {
@@ -205,7 +216,7 @@
 			}
 		}
 
-		if (options.autoStart === '1' && linkedEventCompleted.value == false) {
+		if (getOptionString(options, 'autoStart') === '1' && linkedEventCompleted.value == false) {
 			switchMode('focus')
 			startTimer()
 		}

@@ -1,5 +1,5 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
@@ -146,7 +146,7 @@
 				</view>
 			</view>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -185,12 +185,29 @@
 		'#34C759'  // 深绿
 	]
 
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail[key]
+		return value != null ? `${value}` : ''
+	}
+
+	const getOptionString = (options: UTSJSONObject, key: string): string => {
+		const value = options[key]
+		return value != null ? `${value}` : ''
+	}
+
 	// 格式化日期
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
-		const month = String(date.getMonth() + 1).padStart(2, '0')
-		const day = String(date.getDate()).padStart(2, '0')
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
 		return `${year}-${month}-${day}`
 	}
 
@@ -221,7 +238,7 @@
 			nextDueDate.value = formatDate(event.nextDueDate)
 		} else if (event.intervalDays >= 0) {
 			repeatType.value = 'interval'
-			intervalDays.value = String(event.intervalDays)
+			intervalDays.value = `${event.intervalDays}`
 		} else {
 			repeatType.value = 'single'
 		}
@@ -349,13 +366,18 @@
 	}
 
 	// 重复方式改变
-	const onRepeatTypeChange = (e: any) => {
-		repeatType.value = e.detail.value
+	const onRepeatTypeChange = (e: UTSJSONObject) => {
+		const value = getDetailStringValue(e, 'value')
+		if (value === 'date' || value === 'single') {
+			repeatType.value = value
+			return
+		}
+		repeatType.value = 'interval'
 	}
 
 	// 日期改变
-	const onDateChange = (e: any) => {
-		nextDueDate.value = e.detail.value
+	const onDateChange = (e: UTSJSONObject) => {
+		nextDueDate.value = getDetailStringValue(e, 'value')
 	}
 
 	// 保存事件
@@ -461,9 +483,10 @@
 	}
 
 	// 页面加载时获取数据
-	onLoad((options: any) => {
-		if (options.id != null && options.id !== '') {
-			eventId.value = parseInt(options.id)
+	onLoad((options: UTSJSONObject) => {
+		const id = getOptionString(options, 'id')
+		if (id.length > 0) {
+			eventId.value = parseInt(id)
 			loadEventData()
 			loadLabels()
 		} else {

@@ -258,7 +258,11 @@ export class EventManager {
         })
       }
     })
-    return Array.from(latestDates.values())
+    const results: EventLatestCompletion[] = []
+    latestDates.forEach((entry) => {
+      results.push(entry.value)
+    })
+    return results
   }
 
   static getCompletedEventIdsOnDate(timestamp: number): number[] {
@@ -459,7 +463,7 @@ export class EventManager {
       const labelIds = this.parseLabelIds(event.labelIdList)
       if (labelIds.length === 0) {
         const cached = statsMap.get(0)
-        const uncategorized = cached != null ? cached : { labelId: 0, count: 0 }
+        const uncategorized: EventLabelStats = cached != null ? cached : { labelId: 0, count: 0 }
         uncategorized.count += 1
         statsMap.set(0, uncategorized)
         return
@@ -467,13 +471,17 @@ export class EventManager {
 
       labelIds.forEach(labelId => {
         const cached = statsMap.get(labelId)
-        const current = cached != null ? cached : { labelId, count: 0 }
+        const current: EventLabelStats = cached != null ? cached : { labelId, count: 0 }
         current.count += 1
         statsMap.set(labelId, current)
       })
     })
 
-    return Array.from(statsMap.values()).sort((a, b) => b.count - a.count)
+    const results: EventLabelStats[] = []
+    statsMap.forEach((entry) => {
+      results.push(entry.value)
+    })
+    return results.sort((a, b) => b.count - a.count)
   }
 
   private static getTodayStart(): number {
@@ -568,23 +576,7 @@ export class EventManager {
   }
 
   private static migrateTerminatedAt(): void {
-    const events = StorageUtils.getEvents()
-    let changed = false
-    const migratedEvents = events.map(event => {
-      const terminatedAt = (event as any).terminatedAt
-      if (terminatedAt == null) {
-        changed = true
-        return {
-          ...event,
-          terminatedAt: event.isTerminated ? event.updateTime : 0
-        }
-      }
-      return event
-    })
-
-    if (changed && StorageUtils.saveEvents(migratedEvents)) {
-      this.syncWidgetSnapshot()
-    }
+    return
   }
 
   private static syncWidgetSnapshot(): void {

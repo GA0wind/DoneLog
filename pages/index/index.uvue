@@ -1,17 +1,17 @@
 <template>
-	<view class="container">
+	<scroll-view scroll-y class="container">
 		<!-- 搜索和筛选 -->
 		<view class="filter-bar">
 			<input class="search-input" v-model="searchKeyword" placeholder="搜索事件..." />
 			<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
 				<view class="filter-btn">
-					<text>{{selectedLabel != null ? selectedLabel.name : '全部标签'}}</text>
+					<text>{{selectedLabelText}}</text>
 					<text class="arrow">▼</text>
 				</view>
 			</picker>
 			<picker mode="selector" :range="statusOptions" range-key="name" @change="onStatusChange">
 				<view class="filter-btn">
-					<text>{{selectedStatus != null ? selectedStatus.name : '全部状态'}}</text>
+					<text>{{selectedStatusText}}</text>
 					<text class="arrow">▼</text>
 				</view>
 			</picker>
@@ -25,7 +25,7 @@
 		</view>
 
 		<!-- 事件列表 -->
-		<scroll-view scroll-y class="event-list" @scrolltolower="loadMore">
+		<view class="event-list">
 			<view 
 				class="event-card" 
 				v-for="event in filteredEvents" 
@@ -40,7 +40,7 @@
 					</text>
 				</view>
 				<view class="event-remark">
-					<text class="remark-text" :class="{ 'remark-placeholder': !event.remark }">{{event.remark ? getShortRemark(event.remark) : '占位备注'}}</text>
+					<text class="remark-text" :class="{ 'remark-placeholder': event.remark.length === 0 }">{{event.remark.length > 0 ? getShortRemark(event.remark) : '占位备注'}}</text>
 				</view>
 				<view class="event-footer">
 					<view class="event-tags">
@@ -48,9 +48,9 @@
 							class="tag" 
 							v-for="labelId in getEventLabelIds(event)" 
 							:key="labelId"
-							:style="{ backgroundColor: getLabelColor(parseInt(labelId)) }"
+							:style="{ backgroundColor: getLabelColor(labelId) }"
 						>
-							{{getLabelName(parseInt(labelId))}}
+							{{getLabelName(labelId)}}
 						</text>
 					</view>
 					<view class="footer-actions" v-if="canComplete(event)">
@@ -64,13 +64,13 @@
 				<text class="empty-title">暂时没有待办事件</text>
 				<text class="empty-desc">试试新增一个周期事项，或者切换筛选条件看看。</text>
 			</view>
-		</scroll-view>
+		</view>
 
 		<!-- 浮动添加按钮 -->
 		<view class="add-btn" @click="goToAdd">
 			<text class="add-icon">+</text>
 		</view>
-	</view>
+	</scroll-view>
 </template>
 
 <script setup lang="uts">
@@ -103,6 +103,19 @@
 		{ id: 2, name: '已终止' }
 	])
 
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailNumberValue = (e: UTSJSONObject, key: string): number => {
+		const detail = getDetailObject(e)
+		if (detail == null) return 0
+		const value = detail[key]
+		const parsed = parseInt(value != null ? `${value}` : '')
+		return Number.isNaN(parsed) ? 0 : parsed
+	}
+
 	// 获取标签选项
 	const getLabelOptions = () => {
 		const allLabels = LabelManager.getSortedLabels()
@@ -117,25 +130,6 @@
 		todayCompletedEventIds.value = EventManager.getCompletedEventIdsOnDate(Date.now())
 		getLabelOptions()
 	}
-
-	// 筛选事件
-	const filteredEvents = computed(() => {
-		return events.value.filter(event => {
-			if (matchesStatus(event) == false) {
-				return false
-			}
-
-			if (shouldHideCompletedEvent(event)) {
-				return false
-			}
-
-			if (searchKeyword.value.length === 0) {
-				return true
-			}
-
-			return event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
-		}).sort((a, b) => compareEventsForDisplay(a, b))
-	})
 
 	const getEventLabelIds = (event: Event): number[] => {
 		if (event.labelIdList.length === 0) return []
@@ -162,16 +156,16 @@
 		return event.isTerminated
 	}
 
+	const isCompletedToday = (eventId: number): boolean => {
+		return todayCompletedEventIds.value.includes(eventId)
+	}
+
 	const isCompletedEvent = (event: Event): boolean => {
 		return isCompletedToday(event.id) || EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
 	}
 
 	const shouldHideCompletedEvent = (event: Event): boolean => {
 		return hideCompletedToday.value && event.isTerminated == false && isCompletedEvent(event)
-	}
-
-	const isCompletedToday = (eventId: number): boolean => {
-		return todayCompletedEventIds.value.includes(eventId)
 	}
 
 	const getEventDisplayGroup = (event: Event): number => {
@@ -210,6 +204,35 @@
 
 		return 0
 	}
+
+	const selectedLabelText = computed(() => {
+		const label = selectedLabel.value
+		return label != null ? label.name : '全部标签'
+	})
+
+	const selectedStatusText = computed(() => {
+		const status = selectedStatus.value
+		return status != null ? status.name : '全部状态'
+	})
+
+	// 筛选事件
+	const filteredEvents = computed<Event[]>(() => {
+		return events.value.filter((event): boolean => {
+			if (matchesStatus(event) == false) {
+				return false
+			}
+
+			if (shouldHideCompletedEvent(event)) {
+				return false
+			}
+
+			if (searchKeyword.value.length === 0) {
+				return true
+			}
+
+			return event.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+		}).sort((a, b) => compareEventsForDisplay(a, b))
+	})
 
 	const canComplete = (event: Event): boolean => {
 		if (event.isTerminated) {
@@ -304,8 +327,8 @@
 	}
 
 	// 标签筛选改变
-	const onLabelChange = (e: any) => {
-		const index = e.detail.value
+	const onLabelChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e, 'value')
 		if (index === 0) {
 			selectedLabel.value = null
 		} else {
@@ -315,8 +338,8 @@
 	}
 
 	// 状态筛选改变
-	const onStatusChange = (e: any) => {
-		const index = e.detail.value
+	const onStatusChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e, 'value')
 		if (index === 0) {
 			selectedStatus.value = null
 		} else {
