@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
@@ -93,7 +93,7 @@
 		<view class="modal selector-modal" v-if="showLabelSelector" @click="hideLabelModal">
 			<view class="modal-content selector-modal-content" @click.stop>
 				<text class="modal-title">选择标签</text>
-				<scroll-view scroll-y class="selector-body">
+				<scroll-view direction="vertical" class="selector-body">
 					<view
 						class="selector-item"
 						:class="{ selected: selectedLabelIds.includes(label.id) }"

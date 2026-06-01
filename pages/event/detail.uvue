@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<!-- 事件信息卡片 -->
 		<view class="event-info">
 			<view class="event-header">
@@ -56,7 +56,7 @@
 			<view class="section-header">
 				<text class="section-title">完成记录</text>
 			</view>
-			<scroll-view scroll-y class="history-list">
+			<scroll-view direction="vertical" class="history-list">
 				<view class="history-item" v-for="record in historyRecords" :key="record.id">
 					<view class="history-dot"></view>
 					<view class="history-content">

@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="calendar-shell">
 			<!-- 日历头部 -->
 			<view class="calendar-header">
