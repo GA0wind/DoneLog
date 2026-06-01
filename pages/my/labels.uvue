@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="tips-card">
 			<text class="tips-title">{{pageTitle}}</text>
 			<text class="tips-desc">支持新增、编辑、删除和上下排序。排序结果会直接影响标签显示顺序。</text>
@@ -67,7 +67,7 @@
 					<text class="modal-title">合并标签</text>
 					<text class="modal-desc">选择要合并到的目标标签。</text>
 				</view>
-				<scroll-view scroll-y class="merge-list">
+				<scroll-view direction="vertical" class="merge-list">
 					<view
 						class="merge-target"
 						v-for="label in mergeTargetLabels"

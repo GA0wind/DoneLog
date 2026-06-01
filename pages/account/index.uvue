@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="summary-card">
 			<view class="summary-item">
 				<text class="summary-value">¥{{monthOverview.expense.toFixed(2)}}</text>
@@ -181,7 +181,7 @@
 		<view class="modal" v-if="showLabelSelector" @click="showLabelSelector = false">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">选择标签</text>
-				<scroll-view scroll-y class="selector-body">
+				<scroll-view direction="vertical" class="selector-body">
 					<view class="selector-item" :class="{ selected: formLabelIds.includes(label.id) }" v-for="label in labels" :key="label.id" @click="toggleFormLabel(label.id)">
 						<view class="selector-left">
 							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>

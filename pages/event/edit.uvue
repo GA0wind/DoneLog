@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
@@ -86,7 +86,7 @@
 				<view class="modal-header">
 					<text class="modal-title">选择标签</text>
 				</view>
-				<scroll-view scroll-y class="modal-body selector-body">
+				<scroll-view direction="vertical" class="modal-body selector-body">
 					<view class="label-list">
 						<view 
 							class="label-item" 
