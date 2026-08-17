@@ -21,9 +21,9 @@
 			</view>
 
 			<view class="event-details">
-				<view class="detail-item" v-if="showIntervalDays">
-					<text class="detail-label">间隔天数：</text>
-					<text class="detail-value">{{eventIntervalDays}} 天</text>
+				<view class="detail-item" v-if="showIntervalRepeat">
+					<text class="detail-label">重复方式：</text>
+					<text class="detail-value">{{intervalRepeatText}}</text>
 				</view>
 				<view class="detail-item" v-if="showSingleReminder">
 					<text class="detail-label">重复方式：</text>
@@ -97,6 +97,10 @@
 		return event.value != null ? event.value.intervalDays : 0
 	})
 
+	const eventRepeatUnit = computed(() => {
+		return event.value != null ? event.value.repeatUnit : 'day'
+	})
+
 	const eventNextDueDate = computed(() => {
 		return event.value != null ? event.value.nextDueDate : 0
 	})
@@ -109,7 +113,7 @@
 		return event.value != null ? event.value.createTime : 0
 	})
 
-	const showIntervalDays = computed(() => {
+	const showIntervalRepeat = computed(() => {
 		return event.value != null && event.value.intervalDays >= 0 && event.value.nextDueDate <= 0
 	})
 
@@ -123,6 +127,26 @@
 
 	const showRemark = computed(() => {
 		return event.value != null && event.value.remark.length > 0
+	})
+
+	const intervalRepeatText = computed(() => {
+		if (event.value == null) {
+			return ''
+		}
+
+		if (eventRepeatUnit.value === 'month') {
+			return `每 ${eventIntervalDays.value} 个月`
+		}
+
+		if (eventRepeatUnit.value === 'year') {
+			return `每 ${eventIntervalDays.value} 年`
+		}
+
+		if (eventIntervalDays.value === 0) {
+			return '按天，明天再次完成'
+		}
+
+		return `按天，中间空 ${eventIntervalDays.value} 天`
 	})
 
 	const isOverdue = computed(() => {

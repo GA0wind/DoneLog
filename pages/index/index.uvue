@@ -449,8 +449,10 @@
 	}
 
 	.quick-chip {
-		height: 32px;
-		line-height: 32px;
+		min-height: 32px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
 		padding: 0 12px;
 		border-radius: 16px;
 		background-color: #f2ebe2;
@@ -464,6 +466,7 @@
 	.quick-chip-text {
 		font-size: 12px;
 		color: #4d5b67;
+		line-height: 16px;
 	}
 
 	.quick-chip.active {

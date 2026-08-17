@@ -361,6 +361,26 @@ type AppMeta = {
 
 项目当前没有 `package.json`，通常不需要执行额外依赖安装。
 
+### 本地原生打包 APK
+
+仓库根目录提供了脚本：[build-local.ps1](D:/code/uni-app/DoneLog/build-local.ps1)
+
+完整打包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-local.ps1
+```
+
+仅重打包已有原生工程：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -BuildOnly
+```
+
+默认输出：
+
+- [app-debug.apk](D:/code/uni-app/DoneLog/local-native-sdk/uniappxnativepackage/app/build/outputs/apk/debug/app-debug.apk)
+
 ## 业务规则
 
 - 同一个事件同一天只能完成一次
