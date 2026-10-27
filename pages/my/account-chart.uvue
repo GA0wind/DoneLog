@@ -27,7 +27,8 @@
 
 		<view class="chart-card">
 			<view class="chart-wrap">
-				<view class="pie-chart" :style="{ background: pieBackground }">
+				<view class="pie-chart">
+					<image class="pie-svg" :src="pieSvg" mode="aspectFit"></image>
 					<view class="pie-hole">
 						<text class="pie-total">¥{{totalAmount.toFixed(2)}}</text>
 						<text class="pie-label">{{chartTypeText}}{{periodText}}</text>
@@ -114,21 +115,29 @@
 		})
 	})
 
-	const pieBackground = computed(() => {
+	const pieSvg = computed(() => {
+		const size = 220
+		const center = 110
+		const radius = 82
+		const strokeWidth = 42
+		const circumference = 515.22
 		if (chartStats.value.length === 0) {
-			return 'linear-gradient(135deg, #f0e7dc, #e5d8c8)'
+			const emptySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="#e5d8c8" stroke-width="${strokeWidth}"/></svg>`
+			return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(emptySvg)}`
 		}
 
 		let current = 0
 		const segments: string[] = []
 		chartStats.value.forEach(item => {
-			const start = (current * 100).toFixed(2)
-			current += item.percent
-			const end = (current * 100).toFixed(2)
-			segments.push(`${item.color} ${start}% ${end}%`)
+			const dash = Math.max(2, item.percent * circumference)
+			const gap = circumference - dash
+			const offset = 0 - current
+			segments.push(`<circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${item.color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" transform="rotate(-90 ${center} ${center})" stroke-linecap="butt"/>`)
+			current += dash
 		})
 
-		return `conic-gradient(${segments.join(', ')})`
+		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="#eadfd2" stroke-width="${strokeWidth}"/>${segments.join('')}</svg>`
+		return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 	})
 
 	const loadData = () => {
@@ -180,6 +189,10 @@
 		margin-bottom: 14px;
 	}
 
+	.hero-card {
+		padding: 16px 18px;
+	}
+
 	.hero-kicker {
 		font-size: 12px;
 		color: #1f7a72;
@@ -187,10 +200,10 @@
 	}
 
 	.hero-title {
-		font-size: 24px;
+		font-size: 22px;
 		font-weight: bold;
 		color: #24323a;
-		margin-bottom: 8px;
+		margin-bottom: 6px;
 	}
 
 	.hero-desc {
@@ -244,9 +257,19 @@
 		border-radius: 110px;
 		justify-content: center;
 		align-items: center;
+		position: relative;
+	}
+
+	.pie-svg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 220px;
+		height: 220px;
 	}
 
 	.pie-hole {
+		position: absolute;
 		width: 120px;
 		height: 120px;
 		border-radius: 60px;

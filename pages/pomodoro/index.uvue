@@ -150,7 +150,7 @@
 			return false
 		}
 
-		if (event.intervalDays < 0) {
+		if (event.intervalDays < 0 || event.nextDueDate > 0) {
 			EventManager.terminateEvent(linkedEventId.value)
 		}
 		linkedEvent.value = EventManager.getEventById(linkedEventId.value)

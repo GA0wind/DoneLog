@@ -1,27 +1,31 @@
 type LegacyEvent = {
   id: number
-  name: string
-  labelIdList: string
-  intervalDays: number
+  name?: string
+  labelIdList?: string
+  intervalDays?: number
   repeatUnit?: RepeatUnit
-  nextDueDate: number
-  remark: string
-  isTerminated: boolean
+  nextDueDate?: number
+  remark?: string
+  isTerminated?: boolean
   terminatedAt?: number
-  createTime: number
-  updateTime: number
+  notifyEnabled?: boolean
+  notifyTime?: string
+  createTime?: number
+  updateTime?: number
 }
 
 type LegacyAccountEntry = {
   id: number
-  type: 'expense' | 'income'
-  amount: number
+  type?: 'expense' | 'income'
+  amount?: number
   labelIdList?: string
   labelId?: number
-  remark: string
-  occurredAt: number
-  createTime: number
-  updateTime: number
+  paymentMethodId?: number
+  autoRenewalId?: number
+  remark?: string
+  occurredAt?: number
+  createTime?: number
+  updateTime?: number
 }
 
 type BackupPayload = {
@@ -32,6 +36,8 @@ type BackupPayload = {
   eventLabels: Label[]
   accountLabels: Label[]
   accountEntries: AccountEntry[]
+  paymentMethods?: PaymentMethod[]
+  autoRenewals?: AutoRenewal[]
   budgetSettings: BudgetSettings
   appMeta: AppMeta
 }
@@ -46,6 +52,8 @@ export class StorageUtils {
   static readonly EVENT_LABELS_KEY = 'donelog_event_labels'
   static readonly ACCOUNT_LABELS_KEY = 'donelog_account_labels'
   static readonly ACCOUNT_ENTRIES_KEY = 'donelog_account_entries'
+  static readonly PAYMENT_METHODS_KEY = 'donelog_payment_methods'
+  static readonly AUTO_RENEWALS_KEY = 'donelog_auto_renewals'
   static readonly BUDGET_SETTINGS_KEY = 'donelog_budget_settings'
   static readonly LEGACY_LABELS_KEY = 'donelog_labels'
   static readonly APP_META_KEY = 'donelog_app_meta'
@@ -63,19 +71,24 @@ export class StorageUtils {
       if (parsed == null) {
         return []
       }
-      return parsed.map((event): Event => ({
-        id: event.id,
-        name: event.name,
-        labelIdList: event.labelIdList,
-        intervalDays: event.intervalDays,
-        repeatUnit: this.normalizeRepeatUnit(event.repeatUnit),
-        nextDueDate: event.nextDueDate,
-        remark: event.remark,
-        isTerminated: event.isTerminated,
-        terminatedAt: event.terminatedAt != null ? event.terminatedAt : 0,
-        createTime: event.createTime,
-        updateTime: event.updateTime
-      }))
+      return parsed.map((event): Event => {
+        const createTime = event.createTime != null ? event.createTime : Date.now()
+        return {
+          id: event.id,
+          name: event.name != null ? event.name : '未命名事件',
+          labelIdList: event.labelIdList != null ? event.labelIdList : '',
+          intervalDays: event.intervalDays != null ? event.intervalDays : 0,
+          repeatUnit: this.normalizeRepeatUnit(event.repeatUnit),
+          nextDueDate: event.nextDueDate != null ? event.nextDueDate : 0,
+          remark: event.remark != null ? event.remark : '',
+          isTerminated: event.isTerminated != null ? event.isTerminated : false,
+          terminatedAt: event.terminatedAt != null ? event.terminatedAt : 0,
+          notifyEnabled: event.notifyEnabled != null ? event.notifyEnabled : false,
+          notifyTime: event.notifyTime != null ? event.notifyTime : '09:00',
+          createTime,
+          updateTime: event.updateTime != null ? event.updateTime : createTime
+        }
+      })
     } catch (e) {
       console.error('获取事件列表失败', e)
       return []
@@ -202,23 +215,29 @@ export class StorageUtils {
       if (typeof data !== 'string' || data.length === 0) {
         return []
       }
+      const defaultPaymentMethodId = this.getDefaultPaymentMethodId()
       const entries = JSON.parseArray<LegacyAccountEntry>(data)
       if (entries == null) {
         return []
       }
-      return entries.map((entry): AccountEntry => ({
-        id: entry.id,
-        type: entry.type,
-        amount: entry.amount,
-        labelIdList: entry.labelIdList != null
-          ? entry.labelIdList
-          : (entry.labelId != null && entry.labelId > 0 ? `${entry.labelId}` : '')
-        ,
-        remark: entry.remark,
-        occurredAt: entry.occurredAt,
-        createTime: entry.createTime,
-        updateTime: entry.updateTime
-      }))
+      return entries.map((entry): AccountEntry => {
+        const createTime = entry.createTime != null ? entry.createTime : Date.now()
+        return {
+          id: entry.id,
+          type: entry.type === 'income' ? 'income' : 'expense',
+          amount: entry.amount != null ? entry.amount : 0,
+          labelIdList: entry.labelIdList != null
+            ? entry.labelIdList
+            : (entry.labelId != null && entry.labelId > 0 ? `${entry.labelId}` : '')
+          ,
+          paymentMethodId: entry.paymentMethodId != null ? entry.paymentMethodId : defaultPaymentMethodId,
+          autoRenewalId: entry.autoRenewalId != null ? entry.autoRenewalId : 0,
+          remark: entry.remark != null ? entry.remark : '',
+          occurredAt: entry.occurredAt != null ? entry.occurredAt : createTime,
+          createTime,
+          updateTime: entry.updateTime != null ? entry.updateTime : createTime
+        }
+      })
     } catch (e) {
       console.error('获取记账记录失败', e)
       return []
@@ -234,6 +253,131 @@ export class StorageUtils {
       return true
     } catch (e) {
       console.error('保存记账记录失败', e)
+      return false
+    }
+  }
+
+  private static getDefaultPaymentMethods(): PaymentMethod[] {
+    const now = Date.now()
+    return [
+      { id: 1, name: '支付宝', isDefault: true, sortOrder: 1, createTime: now, updateTime: now },
+      { id: 2, name: '微信', isDefault: false, sortOrder: 2, createTime: now, updateTime: now },
+      { id: 3, name: '银行卡', isDefault: false, sortOrder: 3, createTime: now, updateTime: now }
+    ]
+  }
+
+  private static normalizePaymentMethods(methods: PaymentMethod[]): PaymentMethod[] {
+    if (methods.length === 0) {
+      return this.getDefaultPaymentMethods()
+    }
+
+    const usedIds: number[] = []
+    const usedNames: string[] = []
+    const normalized: PaymentMethod[] = []
+    let nextId = Math.max(...methods.map(method => method.id)) + 1
+
+    methods
+      .slice()
+      .sort((a, b): number => a.sortOrder - b.sortOrder)
+      .forEach(method => {
+        const name = method.name.trim()
+        if (name.length === 0 || usedNames.includes(name)) {
+          return
+        }
+
+        let nextMethodId = method.id
+        if (nextMethodId <= 0 || usedIds.includes(nextMethodId)) {
+          nextMethodId = nextId++
+        }
+
+        usedIds.push(nextMethodId)
+        usedNames.push(name)
+        normalized.push({
+          ...method,
+          id: nextMethodId,
+          name
+        })
+      })
+
+    if (normalized.length === 0) {
+      return this.getDefaultPaymentMethods()
+    }
+
+    const defaultIndex = normalized.findIndex((method): boolean => method.isDefault == true)
+    const activeDefaultIndex = defaultIndex >= 0 ? defaultIndex : 0
+    return normalized.map((method, index): PaymentMethod => {
+      return {
+        id: method.id,
+        name: method.name,
+        isDefault: index === activeDefaultIndex,
+        sortOrder: index + 1,
+        createTime: method.createTime,
+        updateTime: method.updateTime
+      }
+    })
+  }
+
+  private static getDefaultPaymentMethodId(): number {
+    const methods = this.getPaymentMethods()
+    const found = methods.find((method): boolean => method.isDefault == true)
+    return found != null ? found.id : 1
+  }
+
+  static getPaymentMethods(): PaymentMethod[] {
+    try {
+      const data = uni.getStorageSync(this.PAYMENT_METHODS_KEY)
+      if (typeof data !== 'string' || data.length === 0) {
+        const defaults = this.getDefaultPaymentMethods()
+        this.savePaymentMethods(defaults)
+        return defaults
+      }
+      const parsed = JSON.parseArray<PaymentMethod>(data)
+      if (parsed == null) {
+        const defaults = this.getDefaultPaymentMethods()
+        this.savePaymentMethods(defaults)
+        return defaults
+      }
+      const normalized = this.normalizePaymentMethods(parsed)
+      this.savePaymentMethods(normalized)
+      return normalized
+    } catch (e) {
+      console.error('获取支付方式失败', e)
+      const defaults = this.getDefaultPaymentMethods()
+      this.savePaymentMethods(defaults)
+      return defaults
+    }
+  }
+
+  static savePaymentMethods(methods: PaymentMethod[]): boolean {
+    try {
+      uni.setStorageSync(this.PAYMENT_METHODS_KEY, JSON.stringify(this.normalizePaymentMethods(methods)))
+      return true
+    } catch (e) {
+      console.error('保存支付方式失败', e)
+      return false
+    }
+  }
+
+  static getAutoRenewals(): AutoRenewal[] {
+    try {
+      const data = uni.getStorageSync(this.AUTO_RENEWALS_KEY)
+      if (typeof data !== 'string' || data.length === 0) {
+        return []
+      }
+      const parsed = JSON.parseArray<AutoRenewal>(data)
+      return parsed != null ? parsed : []
+    } catch (e) {
+      console.error('获取自动续费失败', e)
+      return []
+    }
+  }
+
+  static saveAutoRenewals(renewals: AutoRenewal[]): boolean {
+    try {
+      uni.setStorageSync(this.AUTO_RENEWALS_KEY, JSON.stringify(renewals))
+      return true
+    } catch (e) {
+      console.error('保存自动续费失败', e)
       return false
     }
   }
@@ -319,6 +463,8 @@ export class StorageUtils {
       eventLabels: this.getEventLabels(),
       accountLabels: this.getAccountLabels(),
       accountEntries: this.getAccountEntries(),
+      paymentMethods: this.getPaymentMethods(),
+      autoRenewals: this.getAutoRenewals(),
       budgetSettings: this.getBudgetSettings(),
       appMeta: this.getAppMeta()
     })
@@ -327,7 +473,11 @@ export class StorageUtils {
   static importData(payload: string): boolean {
     try {
       const parsed = JSON.parse<BackupPayload>(payload)
-      if (parsed == null) {
+      if (parsed == null || parsed.version !== 1
+        || parsed.events == null || parsed.completionRecords == null
+        || parsed.eventLabels == null || parsed.accountLabels == null
+        || parsed.accountEntries == null || parsed.budgetSettings == null
+        || parsed.budgetSettings.labelMonthlyBudgets == null || parsed.appMeta == null) {
         return false
       }
 
@@ -341,13 +491,36 @@ export class StorageUtils {
         defaultLabelsVersion: parsed.appMeta.defaultLabelsVersion
       }
 
-      return this.saveEvents(parsed.events)
+      const keys = [
+        this.EVENTS_KEY, this.COMPLETION_RECORDS_KEY, this.EVENT_LABELS_KEY,
+        this.ACCOUNT_LABELS_KEY, this.ACCOUNT_ENTRIES_KEY, this.PAYMENT_METHODS_KEY,
+        this.AUTO_RENEWALS_KEY, this.BUDGET_SETTINGS_KEY,
+        this.APP_META_KEY
+      ]
+      const originalValues = keys.map((key): string => {
+        const value = uni.getStorageSync(key)
+        return typeof value === 'string' ? value : ''
+      })
+
+      const success = this.saveEvents(parsed.events)
         && this.saveCompletionRecords(parsed.completionRecords)
         && this.saveEventLabels(parsed.eventLabels)
         && this.saveAccountLabels(parsed.accountLabels)
         && this.saveAccountEntries(parsed.accountEntries)
+        && this.savePaymentMethods(parsed.paymentMethods != null ? parsed.paymentMethods : this.getDefaultPaymentMethods())
+        && this.saveAutoRenewals(parsed.autoRenewals != null ? parsed.autoRenewals : [])
         && this.saveBudgetSettings(budgetSettings)
         && this.saveAppMeta(appMeta)
+      if (!success) {
+        keys.forEach((key, index) => {
+          try {
+            uni.setStorageSync(key, originalValues[index])
+          } catch (e) {
+            console.error('恢复导入前数据失败', key, e)
+          }
+        })
+      }
+      return success
     } catch (e) {
       console.error('导入备份失败', e)
       return false
@@ -368,6 +541,8 @@ export type Event = {
   remark: string
   isTerminated: boolean
   terminatedAt: number
+  notifyEnabled: boolean
+  notifyTime: string
   createTime: number
   updateTime: number
 }
@@ -381,6 +556,8 @@ export type EventInput = {
   remark: string
   isTerminated: boolean
   terminatedAt: number
+  notifyEnabled: boolean
+  notifyTime: string
 }
 
 export type RepeatUnit = 'day' | 'month' | 'year'
@@ -413,6 +590,8 @@ export type AccountEntry = {
   type: 'expense' | 'income'
   amount: number
   labelIdList: string
+  paymentMethodId: number
+  autoRenewalId: number
   remark: string
   occurredAt: number
   createTime: number
@@ -423,8 +602,47 @@ export type AccountEntryInput = {
   type: 'expense' | 'income'
   amount: number
   labelIdList: string
+  paymentMethodId?: number
+  autoRenewalId?: number
   remark: string
   occurredAt: number
+}
+
+export type PaymentMethod = {
+  id: number
+  name: string
+  isDefault: boolean
+  sortOrder: number
+  createTime: number
+  updateTime: number
+}
+
+export type PaymentMethodInput = {
+  name: string
+}
+
+export type AutoRenewal = {
+  id: number
+  name: string
+  amount: number
+  paymentMethodId: number
+  labelIdList: string
+  chargeDay: number
+  nextChargeDate: number
+  isEnabled: boolean
+  remark: string
+  createTime: number
+  updateTime: number
+}
+
+export type AutoRenewalInput = {
+  name: string
+  amount: number
+  paymentMethodId: number
+  labelIdList: string
+  nextChargeDate: number
+  isEnabled: boolean
+  remark: string
 }
 
 export type LabelBudgetSetting = {

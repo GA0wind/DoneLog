@@ -1,36 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
+	android:layout_height="match_parent"
 	android:orientation="vertical"
-	android:padding="12dp"
-	android:background="@android:color/white">
+	android:paddingLeft="14dp"
+	android:paddingTop="12dp"
+	android:paddingRight="14dp"
+	android:paddingBottom="12dp"
+	android:background="@drawable/donelog_widget_bg">
 
-	<TextView
-		android:id="@+id/widget_title"
+	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:text="DoneLog 今日事件"
-		android:textColor="#24323A"
-		android:textSize="16sp"
-		android:textStyle="bold" />
+		android:orientation="horizontal"
+		android:gravity="center_vertical">
 
-	<TextView
-		android:id="@+id/widget_subtitle"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_marginTop="4dp"
-		android:text="点按条目进入完成流程"
-		android:textColor="#72808D"
-		android:textSize="12sp" />
+		<LinearLayout
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:orientation="vertical">
+
+			<TextView
+				android:id="@+id/widget_title"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:text="今日事件"
+				android:textColor="#24323A"
+				android:textSize="17sp"
+				android:textStyle="bold" />
+
+			<TextView
+				android:id="@+id/widget_subtitle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="2dp"
+				android:ellipsize="end"
+				android:maxLines="1"
+				android:text="今日收支 ¥0.00 / ¥0.00"
+				android:textColor="#72808D"
+				android:textSize="12sp" />
+		</LinearLayout>
+
+		<TextView
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginLeft="10dp"
+			android:background="@drawable/donelog_widget_badge_bg"
+			android:paddingLeft="9dp"
+			android:paddingTop="4dp"
+			android:paddingRight="9dp"
+			android:paddingBottom="4dp"
+			android:text="做完记"
+			android:textColor="#1F7A72"
+			android:textSize="11sp"
+			android:textStyle="bold" />
+	</LinearLayout>
 
 	<LinearLayout
 		android:id="@+id/row_1"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="10dp"
+		android:background="@drawable/donelog_widget_row_bg"
+		android:gravity="center_vertical"
 		android:orientation="horizontal"
-		android:gravity="center_vertical">
+		android:paddingLeft="12dp"
+		android:paddingTop="9dp"
+		android:paddingRight="10dp"
+		android:paddingBottom="9dp">
 		<LinearLayout
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
@@ -38,31 +76,34 @@
 			android:orientation="vertical">
 			<TextView
 				android:id="@+id/row_1_name"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#24323A"
 				android:textSize="14sp"
 				android:textStyle="bold" />
 			<TextView
 				android:id="@+id/row_1_status"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_marginTop="2dp"
+				android:layout_marginTop="1dp"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#72808D"
 				android:textSize="12sp" />
 		</LinearLayout>
 		<TextView
 			android:id="@+id/row_1_action"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:paddingLeft="10dp"
-			android:paddingTop="6dp"
-			android:paddingRight="10dp"
-			android:paddingBottom="6dp"
+			android:layout_width="56dp"
+			android:layout_height="32dp"
+			android:layout_marginLeft="10dp"
+			android:background="@drawable/donelog_widget_action_bg"
+			android:gravity="center"
 			android:text="完成"
 			android:textColor="#FFFFFF"
-			android:textSize="12sp"
-			android:background="#1F7A72" />
+			android:textSize="13sp"
+			android:textStyle="bold" />
 	</LinearLayout>
 
 	<LinearLayout
@@ -70,8 +111,13 @@
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="8dp"
+		android:background="@drawable/donelog_widget_row_bg"
+		android:gravity="center_vertical"
 		android:orientation="horizontal"
-		android:gravity="center_vertical">
+		android:paddingLeft="12dp"
+		android:paddingTop="9dp"
+		android:paddingRight="10dp"
+		android:paddingBottom="9dp">
 		<LinearLayout
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
@@ -79,31 +125,34 @@
 			android:orientation="vertical">
 			<TextView
 				android:id="@+id/row_2_name"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#24323A"
 				android:textSize="14sp"
 				android:textStyle="bold" />
 			<TextView
 				android:id="@+id/row_2_status"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_marginTop="2dp"
+				android:layout_marginTop="1dp"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#72808D"
 				android:textSize="12sp" />
 		</LinearLayout>
 		<TextView
 			android:id="@+id/row_2_action"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:paddingLeft="10dp"
-			android:paddingTop="6dp"
-			android:paddingRight="10dp"
-			android:paddingBottom="6dp"
+			android:layout_width="56dp"
+			android:layout_height="32dp"
+			android:layout_marginLeft="10dp"
+			android:background="@drawable/donelog_widget_action_bg"
+			android:gravity="center"
 			android:text="完成"
 			android:textColor="#FFFFFF"
-			android:textSize="12sp"
-			android:background="#1F7A72" />
+			android:textSize="13sp"
+			android:textStyle="bold" />
 	</LinearLayout>
 
 	<LinearLayout
@@ -111,8 +160,13 @@
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="8dp"
+		android:background="@drawable/donelog_widget_row_bg"
+		android:gravity="center_vertical"
 		android:orientation="horizontal"
-		android:gravity="center_vertical">
+		android:paddingLeft="12dp"
+		android:paddingTop="9dp"
+		android:paddingRight="10dp"
+		android:paddingBottom="9dp">
 		<LinearLayout
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
@@ -120,31 +174,34 @@
 			android:orientation="vertical">
 			<TextView
 				android:id="@+id/row_3_name"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#24323A"
 				android:textSize="14sp"
 				android:textStyle="bold" />
 			<TextView
 				android:id="@+id/row_3_status"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_marginTop="2dp"
+				android:layout_marginTop="1dp"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#72808D"
 				android:textSize="12sp" />
 		</LinearLayout>
 		<TextView
 			android:id="@+id/row_3_action"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:paddingLeft="10dp"
-			android:paddingTop="6dp"
-			android:paddingRight="10dp"
-			android:paddingBottom="6dp"
+			android:layout_width="56dp"
+			android:layout_height="32dp"
+			android:layout_marginLeft="10dp"
+			android:background="@drawable/donelog_widget_action_bg"
+			android:gravity="center"
 			android:text="完成"
 			android:textColor="#FFFFFF"
-			android:textSize="12sp"
-			android:background="#1F7A72" />
+			android:textSize="13sp"
+			android:textStyle="bold" />
 	</LinearLayout>
 
 	<LinearLayout
@@ -152,8 +209,13 @@
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="8dp"
+		android:background="@drawable/donelog_widget_row_bg"
+		android:gravity="center_vertical"
 		android:orientation="horizontal"
-		android:gravity="center_vertical">
+		android:paddingLeft="12dp"
+		android:paddingTop="9dp"
+		android:paddingRight="10dp"
+		android:paddingBottom="9dp">
 		<LinearLayout
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
@@ -161,30 +223,33 @@
 			android:orientation="vertical">
 			<TextView
 				android:id="@+id/row_4_name"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#24323A"
 				android:textSize="14sp"
 				android:textStyle="bold" />
 			<TextView
 				android:id="@+id/row_4_status"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_marginTop="2dp"
+				android:layout_marginTop="1dp"
+				android:ellipsize="end"
+				android:maxLines="1"
 				android:textColor="#72808D"
 				android:textSize="12sp" />
 		</LinearLayout>
 		<TextView
 			android:id="@+id/row_4_action"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:paddingLeft="10dp"
-			android:paddingTop="6dp"
-			android:paddingRight="10dp"
-			android:paddingBottom="6dp"
+			android:layout_width="56dp"
+			android:layout_height="32dp"
+			android:layout_marginLeft="10dp"
+			android:background="@drawable/donelog_widget_action_bg"
+			android:gravity="center"
 			android:text="完成"
 			android:textColor="#FFFFFF"
-			android:textSize="12sp"
-			android:background="#1F7A72" />
+			android:textSize="13sp"
+			android:textStyle="bold" />
 	</LinearLayout>
 </LinearLayout>

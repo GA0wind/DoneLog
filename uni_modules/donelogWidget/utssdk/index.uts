@@ -2,7 +2,10 @@
 import {
 	saveWidgetSnapshot as androidSaveWidgetSnapshot,
 	consumePendingWidgetAction as androidConsumePendingWidgetAction,
-	refreshWidget as androidRefreshWidget
+	refreshWidget as androidRefreshWidget,
+	requestEventNotificationPermission as androidRequestEventNotificationPermission,
+	scheduleEventNotifications as androidScheduleEventNotifications,
+	cancelEventNotifications as androidCancelEventNotifications
 } from './app-android/index.uts'
 // #endif
 
@@ -22,5 +25,23 @@ export function consumePendingWidgetAction(): string {
 export function refreshWidget(): void {
 	// #ifdef APP-ANDROID
 	androidRefreshWidget()
+	// #endif
+}
+
+export function requestEventNotificationPermission(): void {
+	// #ifdef APP-ANDROID
+	androidRequestEventNotificationPermission()
+	// #endif
+}
+
+export function scheduleEventNotifications(payload: string): void {
+	// #ifdef APP-ANDROID
+	androidScheduleEventNotifications(payload)
+	// #endif
+}
+
+export function cancelEventNotifications(): void {
+	// #ifdef APP-ANDROID
+	androidCancelEventNotifications()
 	// #endif
 }

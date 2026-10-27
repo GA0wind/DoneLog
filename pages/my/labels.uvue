@@ -12,16 +12,17 @@
 					<text class="label-name">{{label.name}}</text>
 				</view>
 				<view class="actions">
-					<button class="sort-btn" :disabled="label.sortOrder === 1" @click.stop="moveUp(label)">↑</button>
-					<button class="sort-btn" :disabled="label.sortOrder === labels.length" @click.stop="moveDown(label)">↓</button>
-					<button class="merge-btn" :disabled="labels.length < 2" @click.stop="showMergeDialog(label)">并</button>
-					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删</button>
+					<view class="sort-btn" :class="{ disabled: label.sortOrder === 1 }" @click.stop="moveUp(label)"><text class="action-text sort-action-text">↑</text></view>
+					<view class="sort-btn" :class="{ disabled: label.sortOrder === labels.length }" @click.stop="moveDown(label)"><text class="action-text sort-action-text">↓</text></view>
+					<view class="merge-btn" :class="{ disabled: labels.length < 2 }" @click.stop="showMergeDialog(label)"><text class="action-text">并</text></view>
+					<view class="delete-btn" @click.stop="openDeleteDialog(label)"><text class="action-text">删</text></view>
 				</view>
 			</view>
 			<view class="empty-tip" v-if="labels.length === 0">
 				<text>暂无标签</text>
 			</view>
 		</view>
+		<view class="fab-safe-space"></view>
 
 		<view class="add-btn" @click="showAddDialog">
 			<text class="add-icon">+</text>
@@ -61,7 +62,7 @@
 			</view>
 		</view>
 
-		<view class="modal" v-if="showMergeModal" @click="hideMergeDialog">
+		<view class="modal" v-if="showMergeModal">
 			<view class="modal-content" @click.stop>
 				<view class="modal-header">
 					<text class="modal-title">合并标签</text>
@@ -72,16 +73,32 @@
 						class="merge-target"
 						v-for="label in mergeTargetLabels"
 						:key="label.id"
-						@click="mergeToLabel(label)"
+						:class="{ selected: mergeTargetLabelId == label.id }"
+						@click.stop="selectMergeTarget(label)"
 					>
 						<view class="label-info">
 							<view class="label-color" :style="{ backgroundColor: label.color }"></view>
 							<text class="label-name">{{label.name}}</text>
 						</view>
+						<text class="merge-check" v-if="mergeTargetLabelId == label.id">✓</text>
 					</view>
 				</scroll-view>
 				<view class="modal-footer">
-					<button class="confirm-btn single-btn" @click.stop="hideMergeDialog">取消</button>
+					<button class="cancel-btn" @click.stop="hideMergeDialog">取消</button>
+					<button class="confirm-btn" :class="{ disabled: mergeTargetLabelId <= 0 }" @click.stop="confirmMerge">确认合并</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showDeleteModal">
+			<view class="modal-content" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">确认删除</text>
+					<text class="modal-desc">删除「{{pendingDeleteLabelName}}」后，对应记录会取消关联该标签。</text>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideDeleteDialog">取消</button>
+					<button class="confirm-btn delete-confirm-btn" @click.stop="confirmDeleteLabel">确认删除</button>
 				</view>
 			</view>
 		</view>
@@ -103,6 +120,11 @@
 	const labelColor = ref('#1F7A72')
 	const showMergeModal = ref(false)
 	const mergeSourceLabel = ref<Label | null>(null)
+	const mergeTargetLabelId = ref(0)
+	const showDeleteModal = ref(false)
+	const pendingDeleteLabelId = ref(0)
+	const pendingDeleteLabelName = ref('')
+	const labelKindStorageKey = 'donelog_label_manage_kind'
 
 	const colorOptions = [
 		'#1F7A72',
@@ -120,14 +142,29 @@
 		return value != null ? `${value}` : ''
 	}
 
+	const normalizeKind = (value: string): LabelKind => {
+		return value == 'account' ? 'account' : 'event'
+	}
+
+	const readSavedKind = (): LabelKind => {
+		const saved = uni.getStorageSync(labelKindStorageKey)
+		return typeof saved === 'string' && saved == 'account' ? 'account' : 'event'
+	}
+
+	const applyKind = (value: LabelKind) => {
+		kind.value = value
+		uni.setStorageSync(labelKindStorageKey, value)
+	}
+
 	const loadLabels = () => {
+		LabelManager.repairLabelData()
 		labels.value = LabelManager.getSortedLabels(kind.value)
 	}
 
 	const mergeTargetLabels = computed<Label[]>(() => {
 		if (mergeSourceLabel.value == null) return labels.value
 		const source = mergeSourceLabel.value
-		return labels.value.filter(label => label.id !== source.id)
+		return labels.value.filter(label => label.id != source.id)
 	})
 
 	const syncTitle = () => {
@@ -160,33 +197,42 @@
 	}
 
 	const showMergeDialog = (label: Label) => {
+		if (labels.value.length < 2) return
 		mergeSourceLabel.value = label
+		mergeTargetLabelId.value = 0
 		showMergeModal.value = true
 	}
 
 	const hideMergeDialog = () => {
 		showMergeModal.value = false
 		mergeSourceLabel.value = null
+		mergeTargetLabelId.value = 0
 	}
 
-	const mergeToLabel = (target: Label) => {
+	const selectMergeTarget = (target: Label) => {
+		mergeTargetLabelId.value = target.id
+	}
+
+	const confirmMerge = () => {
 		if (mergeSourceLabel.value == null) return
 		const source = mergeSourceLabel.value
-		uni.showModal({
-			title: '确认合并',
-			content: `把「${source.name}」合并到「${target.name}」吗？`,
-			success: (res) => {
-				if (res.confirm == false) return
-				const success = LabelManager.mergeLabels(source.id, target.id, kind.value)
-				if (success == false) {
-					uni.showToast({ title: '合并失败', icon: 'none' })
-					return
-				}
-				hideMergeDialog()
-				loadLabels()
-				uni.showToast({ title: '合并成功', icon: 'success' })
-			}
-		})
+		if (mergeTargetLabelId.value <= 0) {
+			uni.showToast({ title: '请选择目标标签', icon: 'none' })
+			return
+		}
+		const target = labels.value.find(label => label.id == mergeTargetLabelId.value)
+		if (target == null) {
+			uni.showToast({ title: '目标标签不存在', icon: 'none' })
+			return
+		}
+		const success = LabelManager.mergeLabels(source.id, target.id, kind.value)
+		if (success == false) {
+			uni.showToast({ title: '合并失败', icon: 'none' })
+			return
+		}
+		hideMergeDialog()
+		loadLabels()
+		uni.showToast({ title: '合并成功', icon: 'success' })
 	}
 
 	const clearLabelError = () => {
@@ -211,7 +257,7 @@
 
 		let success = false
 		if (isEdit.value) {
-			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
+			const currentLabel = labels.value.find(item => item.id == editingLabelId.value)
 			success = LabelManager.updateLabel({
 				id: editingLabelId.value,
 				name: normalizedName,
@@ -232,19 +278,30 @@
 		loadLabels()
 	}
 
-	const deleteLabel = (labelId: number) => {
-		uni.showModal({
-			title: '确认删除',
-			content: '删除后对应记录将取消关联该标签，确定继续吗？',
-			success: (res) => {
-				if (res.confirm == false) return
-				const success = LabelManager.deleteLabel(labelId, kind.value)
-				if (success == true) {
-					loadLabels()
-					uni.showToast({ title: '删除成功', icon: 'success' })
-				}
-			}
-		})
+	const openDeleteDialog = (label: Label) => {
+		pendingDeleteLabelId.value = label.id
+		pendingDeleteLabelName.value = label.name
+		showDeleteModal.value = true
+	}
+
+	const hideDeleteDialog = () => {
+		showDeleteModal.value = false
+		pendingDeleteLabelId.value = 0
+		pendingDeleteLabelName.value = ''
+	}
+
+	const confirmDeleteLabel = () => {
+		const labelId = pendingDeleteLabelId.value
+		if (labelId <= 0) return
+		const success = LabelManager.deleteLabel(labelId, kind.value)
+		const deleted = LabelManager.getLabelById(labelId, kind.value) == null
+		if (success == false || deleted == false) {
+			uni.showToast({ title: '删除失败', icon: 'none' })
+			return
+		}
+		hideDeleteDialog()
+		loadLabels()
+		uni.showToast({ title: '删除成功', icon: 'success' })
 	}
 
 	const moveUp = (label: Label) => {
@@ -262,14 +319,18 @@
 	}
 
 	onLoad((options: UTSJSONObject) => {
-		if (getOptionString(options, 'kind') === 'account') {
-			kind.value = 'account'
-		}
+		const optionKind = getOptionString(options, 'kind')
+		applyKind(optionKind.length > 0 ? normalizeKind(optionKind) : readSavedKind())
 		syncTitle()
 		loadLabels()
 	})
 
 	onShow(() => {
+		const savedKind = readSavedKind()
+		if (savedKind != kind.value) {
+			kind.value = savedKind
+			syncTitle()
+		}
 		loadLabels()
 	})
 </script>
@@ -316,11 +377,16 @@
 		overflow: hidden;
 	}
 
+	.fab-safe-space {
+		height: 128px;
+	}
+
 	.label-item {
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
-		padding: 16px;
+		min-height: 72px;
+		padding: 14px 12px;
 		border-bottom-width: 1px;
 		border-bottom-style: solid;
 		border-bottom-color: #f1e7dd;
@@ -330,6 +396,8 @@
 		flex-direction: row;
 		align-items: center;
 		flex: 1;
+		min-width: 0;
+		padding-right: 8px;
 	}
 
 	.label-color {
@@ -343,38 +411,53 @@
 		font-size: 16px;
 		font-weight: 600;
 		color: #24323a;
+		flex: 1;
+		lines: 1;
+		text-overflow: ellipsis;
 	}
 
 	.actions {
 		flex-direction: row;
 		align-items: center;
+		flex-shrink: 0;
 	}
 
 	.sort-btn,
 	.merge-btn,
 	.delete-btn {
-		min-width: 34px;
+		width: 34px;
 		height: 34px;
-		line-height: 34px;
-		padding: 0 10px;
-		border-radius: 999px;
+		padding: 0;
+		border-radius: 17px;
+		margin-left: 6px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.action-text {
 		font-size: 13px;
-		margin-left: 8px;
+		color: #fff;
 	}
 
 	.sort-btn {
 		background-color: #f0e7dc;
+	}
+
+	.sort-action-text {
 		color: #4d5b67;
 	}
 
 	.merge-btn {
 		background-color: #5d7fa3;
-		color: #fff;
 	}
 
 	.delete-btn {
 		background-color: #e07a5f;
-		color: #fff;
+	}
+
+	.sort-btn.disabled,
+	.merge-btn.disabled {
+		opacity: 0.42;
 	}
 
 	.empty-tip {
@@ -386,7 +469,7 @@
 	.add-btn {
 		position: fixed;
 		right: 18px;
-		bottom: 90px;
+		bottom: 26px;
 		width: 58px;
 		height: 58px;
 		border-radius: 29px;
@@ -394,6 +477,7 @@
 		justify-content: center;
 		align-items: center;
 		box-shadow: 0 16px 28px rgba(31, 122, 114, 0.22);
+		z-index: 20;
 	}
 
 	.add-icon {
@@ -474,6 +558,7 @@
 		height: 48px;
 		flex-direction: row;
 		align-items: center;
+		justify-content: space-between;
 		padding: 0 12px;
 		border-radius: 16px;
 		background-color: #fffdf9;
@@ -481,6 +566,17 @@
 		border-style: solid;
 		border-color: #eee2d7;
 		margin-bottom: 8px;
+	}
+
+	.merge-target.selected {
+		border-color: #1f7a72;
+		background-color: #eef7f5;
+	}
+
+	.merge-check {
+		font-size: 18px;
+		font-weight: bold;
+		color: #1f7a72;
 	}
 
 	.color-options {
@@ -530,6 +626,14 @@
 		background-color: #1f7a72;
 		color: #fff;
 		margin-left: 10px;
+	}
+
+	.confirm-btn.disabled {
+		opacity: 0.45;
+	}
+
+	.delete-confirm-btn {
+		background-color: #e07a5f;
 	}
 
 	.single-btn {

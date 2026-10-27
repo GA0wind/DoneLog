@@ -4,22 +4,11 @@
 			<!-- 日历头部 -->
 			<view class="calendar-header">
 				<view class="year-month-nav">
-					<button class="nav-btn" @click="prevMonth">‹</button>
-					<view class="picker-group">
-						<picker class="header-picker" mode="selector" :range="yearOptions" @change="onYearChange">
-							<view class="header-picker-inner">
-								<text class="current-date">{{displayYear}}年</text>
-								<text class="picker-arrow">▼</text>
-							</view>
-						</picker>
-						<picker class="header-picker month-picker" mode="selector" :range="monthOptions" @change="onMonthChange">
-							<view class="header-picker-inner month-picker-inner">
-								<text class="current-date">{{displayMonth}}月</text>
-								<text class="picker-arrow">▼</text>
-							</view>
-						</picker>
+					<view class="nav-btn" @click="prevMonth"><text class="nav-btn-text">‹</text></view>
+					<view class="current-month-wrap">
+						<text class="current-date">{{displayYear}}年{{displayMonth}}月</text>
 					</view>
-					<button class="nav-btn" @click="nextMonth">›</button>
+					<view class="nav-btn" @click="nextMonth"><text class="nav-btn-text">›</text></view>
 				</view>
 			</view>
 
@@ -29,26 +18,24 @@
 			</view>
 
 			<!-- 日历网格 -->
-			<swiper class="calendar-swiper" :current="swiperIndex" :duration="swiperDuration" @change="onSwiperChange" @animationfinish="onSwiperAnimationFinish">
-				<swiper-item v-for="(month, index) in calendarMonths" :key="index">
-					<view class="calendar-grid">
-						<view 
-							class="calendar-day"
-							v-for="(day, dayIndex) in month.days"
-							:key="dayIndex"
-							:class="{ 
-								'selected': isSelected(day),
-								'today': isToday(day),
-								'other-month': !day.isCurrentMonth
-							}"
-							@click="selectDate(day)"
-						>
-							<text class="day-number" :class="{ selected: isSelected(day), today: isToday(day), 'other-month': !day.isCurrentMonth }">{{day.day}}</text>
-							<view class="event-dot" v-if="hasEvent(day)"></view>
-						</view>
+			<view class="calendar-panel">
+				<view class="calendar-grid">
+					<view
+						class="calendar-day"
+						v-for="(day, dayIndex) in currentCalendarDays"
+						:key="dayIndex"
+						:class="{
+							'selected': isSelected(day),
+							'today': isToday(day),
+							'other-month': !day.isCurrentMonth
+						}"
+						@click="selectDate(day)"
+					>
+						<text class="day-number" :class="{ selected: isSelected(day), today: isToday(day), 'other-month': !day.isCurrentMonth }">{{day.day}}</text>
+						<view class="event-dot" v-if="hasEvent(day)"></view>
 					</view>
-				</swiper-item>
-			</swiper>
+				</view>
+			</view>
 		</view>
 
 		<view class="account-section">
@@ -57,11 +44,11 @@
 			</view>
 			<view class="account-summary-card">
 				<view class="account-summary-item">
-					<text class="account-summary-value">¥{{selectedDateOverview.expense.toFixed(2)}}</text>
+					<text class="account-summary-value">¥{{selectedExpenseText}}</text>
 					<text class="account-summary-label">支出</text>
 				</view>
 				<view class="account-summary-item">
-					<text class="account-summary-value">¥{{selectedDateOverview.income.toFixed(2)}}</text>
+					<text class="account-summary-value">¥{{selectedIncomeText}}</text>
 					<text class="account-summary-label">收入</text>
 				</view>
 				<view class="account-summary-item">
@@ -98,6 +85,7 @@
 				</view>
 			</view>
 		</view>
+		<view class="bottom-safe-space"></view>
 	</scroll-view>
 </template>
 
@@ -148,9 +136,16 @@
 	const swiperIndex = ref(0)
 	const swiperDuration = ref(300)
 	const calendarMonths = ref<CalendarMonth[]>([])
+	const currentCalendarDays = ref<CalendarDay[]>([])
 	const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-	const yearOptions = Array.from({ length: 101 }, (_, index) => `${2000 + index}年`)
-	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
+	const yearOptions: string[] = []
+	for (let i = 0; i <= 100; i++) {
+		yearOptions.push(`${2000 + i}年`)
+	}
+	const monthOptions: string[] = []
+	for (let i = 1; i <= 12; i++) {
+		monthOptions.push(`${i}月`)
+	}
 
 	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
 		const detail = e['detail']
@@ -262,7 +257,7 @@
 		if (event.isTerminated) {
 			return false
 		}
-		const lastRecord = history[0]
+		const lastRecord = history.length > 0 ? history[0] : null
 		const dueDateStart = EventManager.getDueDateStart(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
 		return dueDateStart === selectedDayStart
 	}
@@ -277,13 +272,10 @@
 	}
 
 	const generateCalendar = () => {
-		const months: CalendarMonth[] = []
-		for (let i = -1; i <= 1; i++) {
-			const offsetResult = getOffsetYearMonth(currentYear.value, currentMonth.value, i)
-			months.push(generateMonthDays(offsetResult.year, offsetResult.month))
-		}
-		calendarMonths.value = months
-		swiperIndex.value = 1
+		const monthData = generateMonthDays(currentYear.value, currentMonth.value)
+		calendarMonths.value = [monthData]
+		currentCalendarDays.value = monthData.days
+		swiperIndex.value = 0
 	}
 
 	const generateCalendarSilently = () => {
@@ -295,23 +287,33 @@
 	}
 
 	const loadData = () => {
-		events.value = EventManager.getSortedEvents(true, null)
-		labels.value = LabelManager.getSortedLabels()
-		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 		generateCalendar()
+		try {
+			events.value = EventManager.getSortedEvents(true, null)
+			labels.value = LabelManager.getSortedLabels('event')
+			selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
+		} catch (error) {
+			events.value = []
+			labels.value = []
+			selectedDateOverview.value = { income: 0, expense: 0, count: 0 }
+		}
 	}
 
 	const displayYear = computed(() => {
-		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData != null ? monthData.year : currentYear.value
+		return currentYear.value
 	})
 	const displayMonth = computed(() => {
-		const monthData = calendarMonths.value[swiperIndex.value]
-		return monthData != null ? monthData.month : currentMonth.value
+		return currentMonth.value
 	})
 
 	const selectedDateText = computed(() => {
 		return `${selectedDate.value.year}年${selectedDate.value.month}月${selectedDate.value.day}日`
+	})
+	const selectedExpenseText = computed(() => {
+		return selectedDateOverview.value.expense.toFixed(2)
+	})
+	const selectedIncomeText = computed(() => {
+		return selectedDateOverview.value.income.toFixed(2)
 	})
 
 	const isSelected = (day: CalendarDay): boolean => {
@@ -495,12 +497,28 @@
 	.nav-btn {
 		width: 34px;
 		height: 34px;
-		line-height: 34px;
 		background-color: #f2ebe2;
 		border-radius: 17px;
-		font-size: 18px;
-		padding: 0;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.nav-btn-text {
+		font-size: 22px;
 		color: #4d5b67;
+		line-height: 34px;
+	}
+
+	.current-month-wrap {
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		background-color: #fffdf9;
+		border-radius: 999px;
+		padding: 8px 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
 	}
 
 	.current-date {
@@ -536,7 +554,7 @@
 	}
 
 	/* 日历网格 */
-	.calendar-swiper {
+	.calendar-panel {
 		height: 274px;
 		background-color: #fff9f2;
 		border-radius: 0 0 24px 24px;
@@ -618,7 +636,7 @@
 	}
 
 	.event-list {
-		max-height: 350px;
+		padding-bottom: 8px;
 	}
 
 	.event-card {
@@ -709,5 +727,9 @@
 	.account-summary-label {
 		font-size: 12px;
 		color: #72808d;
+	}
+
+	.bottom-safe-space {
+		height: 110px;
 	}
 </style>

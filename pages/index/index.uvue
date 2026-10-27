@@ -1,27 +1,49 @@
 <template>
 	<scroll-view direction="vertical" style="flex: 1" class="container">
+		<view class="today-card">
+			<view class="today-header">
+				<view>
+					<text class="today-kicker">今日概览</text>
+					<text class="today-title">今天先抓重点</text>
+				</view>
+				<view class="today-badge" @click="goToAdd">
+					<text class="today-badge-text">+ 事件</text>
+				</view>
+			</view>
+			<view class="today-grid">
+				<view class="today-metric">
+					<text class="today-value">{{todayDueEventCount}}</text>
+					<text class="today-label">待处理事件</text>
+				</view>
+				<view class="today-metric" @click="goToAccount">
+					<text class="today-value expense">¥{{todayOverview.expense.toFixed(2)}}</text>
+					<text class="today-label">今日支出</text>
+				</view>
+				<view class="today-metric last-today-metric" @click="goToAccount">
+					<text class="today-value income">¥{{todayOverview.income.toFixed(2)}}</text>
+					<text class="today-label">今日收入</text>
+				</view>
+			</view>
+		</view>
+
 		<!-- 搜索和筛选 -->
 		<view class="filter-bar">
 			<input class="search-input" v-model="searchKeyword" placeholder="搜索事件..." />
-			<picker mode="selector" :range="labelOptions" range-key="name" @change="onLabelChange">
-				<view class="filter-btn">
-					<text>{{selectedLabelText}}</text>
-					<text class="arrow">▼</text>
-				</view>
-			</picker>
-			<picker mode="selector" :range="statusOptions" range-key="name" @change="onStatusChange">
-				<view class="filter-btn">
-					<text>{{selectedStatusText}}</text>
-					<text class="arrow">▼</text>
-				</view>
-			</picker>
+			<view class="filter-btn" @click="openLabelFilter">
+				<text class="filter-btn-text">{{selectedLabelText}}</text>
+				<text class="arrow">▼</text>
+			</view>
+			<view class="filter-btn" @click="openStatusFilter">
+				<text class="filter-btn-text">{{selectedStatusText}}</text>
+				<text class="arrow">▼</text>
+			</view>
 		</view>
 
 		<view class="quick-row">
-			<view class="quick-chip" :class="{ active: hideCompletedToday }" @click="toggleHideCompleted">
-				<text class="quick-chip-text" :class="{ active: hideCompletedToday }">{{hideCompletedToday ? '显示已完成' : '隐藏已完成'}}</text>
-			</view>
 			<text class="quick-count">当前 {{filteredEvents.length}} 个</text>
+			<view class="quick-manage-btn" @click="goToEventLabels">
+				<text class="quick-manage-text">标签管理</text>
+			</view>
 		</view>
 
 		<!-- 事件列表 -->
@@ -54,15 +76,18 @@
 						</text>
 					</view>
 					<view class="footer-actions" v-if="canComplete(event)">
-						<button class="action-btn start-btn compact-btn" @click.stop="startPomodoro(event.id)">开始</button>
-						<button class="action-btn complete-btn compact-btn" @click.stop="markComplete(event.id)">完成</button>
+						<view class="action-btn complete-btn" @click.stop="markComplete(event.id)">
+							<text class="action-btn-text complete-btn-text">完成</text>
+						</view>
 					</view>
 				</view>
 			</view>
-			<view class="empty-tip" v-if="filteredEvents.length === 0">
-				<text class="empty-icon">◌</text>
-				<text class="empty-title">暂时没有待办事件</text>
-				<text class="empty-desc">试试新增一个周期事项，或者切换筛选条件看看。</text>
+			<view class="empty-state-wrap" v-if="filteredEvents.length === 0">
+				<view class="empty-tip">
+					<text class="empty-icon">◌</text>
+					<text class="empty-title">暂时没有待办事件</text>
+					<text class="empty-desc">新增一个周期事项，或切换筛选条件看看。</text>
+				</view>
 			</view>
 		</view>
 
@@ -70,12 +95,48 @@
 		<view class="add-btn" @click="goToAdd">
 			<text class="add-icon">+</text>
 		</view>
+
+		<view class="modal" v-if="showLabelFilterModal" @click="closeLabelFilter">
+			<view class="filter-modal-content" @click.stop>
+				<text class="modal-title">选择标签</text>
+				<view
+					class="filter-option"
+					v-for="(option, index) in labelOptions"
+					:key="option.id"
+					:class="{ active: selectedLabelOptionIndex === index }"
+					@click.stop="selectLabelFilter(index)"
+				>
+					<view class="filter-option-left">
+						<view class="label-color-dot" v-if="option.id > 0" :style="{ backgroundColor: option.color }"></view>
+						<text class="filter-option-text" :class="{ active: selectedLabelOptionIndex === index }">{{option.name}}</text>
+					</view>
+					<text class="filter-option-check" v-if="selectedLabelOptionIndex === index">✓</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showStatusFilterModal" @click="closeStatusFilter">
+			<view class="filter-modal-content" @click.stop>
+				<text class="modal-title">选择状态</text>
+				<view
+					class="filter-option"
+					v-for="(option, index) in statusOptions"
+					:key="option.id"
+					:class="{ active: selectedStatusOptionIndex === index }"
+					@click.stop="selectStatusFilter(index)"
+				>
+					<text class="filter-option-text" :class="{ active: selectedStatusOptionIndex === index }">{{option.name}}</text>
+					<text class="filter-option-check" v-if="selectedStatusOptionIndex === index">✓</text>
+				</view>
+			</view>
+		</view>
 	</scroll-view>
 </template>
 
 <script setup lang="uts">
 	import { EventLatestCompletion, EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AccountManager, AccountOverview } from '@/utils/accountManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
 
 	type StatusOption = {
@@ -94,54 +155,67 @@
 	const selectedLabel = ref<Label | null>(null)
 	const latestCompletionDates = ref<EventLatestCompletion[]>([])
 	const todayCompletedEventIds = ref<number[]>([])
-	const hideCompletedToday = ref(false)
+	const todayOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
+	const todayDueEventCount = ref(0)
+	const showLabelFilterModal = ref(false)
+	const showStatusFilterModal = ref(false)
 	const labelOptions = ref<Label[]>([{ id: 0, name: '全部标签', color: '', sortOrder: 0 }])
 	const selectedStatus = ref<StatusOption | null>({ id: 1, name: '进行中' })
 	const statusOptions = ref<StatusOption[]>([
 		{ id: 0, name: '全部状态' },
 		{ id: 1, name: '进行中' },
-		{ id: 2, name: '已终止' }
+		{ id: 2, name: '已完成' },
+		{ id: 3, name: '已终止' }
 	])
-
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailNumberValue = (e: UTSJSONObject, key: string): number => {
-		const detail = getDetailObject(e)
-		if (detail == null) return 0
-		const value = detail[key]
-		const parsed = parseInt(value != null ? `${value}` : '')
-		return Number.isNaN(parsed) ? 0 : parsed
-	}
 
 	// 获取标签选项
 	const getLabelOptions = () => {
-		const allLabels = LabelManager.getSortedLabels()
+		const allLabels = LabelManager.getSortedLabels('event')
 		labelOptions.value = [{ id: 0, name: '全部标签', color: '', sortOrder: 0 }, ...allLabels]
 	}
 
 	// 加载数据
 	const loadData = () => {
 		events.value = EventManager.getSortedEvents(true, selectedLabel.value != null ? selectedLabel.value.id : null)
-		labels.value = LabelManager.getSortedLabels()
+		labels.value = LabelManager.getSortedLabels('event')
 		latestCompletionDates.value = EventManager.getLatestCompletionDates()
 		todayCompletedEventIds.value = EventManager.getCompletedEventIdsOnDate(Date.now())
+		const todayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime()
+		todayOverview.value = AccountManager.getOverviewByDate(todayStart)
+		todayDueEventCount.value = EventManager.getSortedEvents(true, null).filter((event): boolean => {
+			if (event.isTerminated) return false
+			if (todayCompletedEventIds.value.includes(event.id)) return false
+			const item = latestCompletionDates.value.find(record => record.eventId === event.id)
+			const lastCompleteDate = item != null ? item.lastCompleteDate : null
+			if (EventManager.isFixedDateCompleted(event, lastCompleteDate)) return false
+			return EventManager.calculateDaysUntilDue(event, lastCompleteDate) <= 0
+		}).length
 		getLabelOptions()
 	}
 
 	const getEventLabelIds = (event: Event): number[] => {
 		if (event.labelIdList.length === 0) return []
+		const validLabelIds = labels.value.map(label => label.id)
 		return event.labelIdList
 			.split(',')
 			.map(id => parseInt(id))
-			.filter(id => !Number.isNaN(id))
+			.filter(id => !Number.isNaN(id) && validLabelIds.includes(id))
 	}
 
 	const getLastCompleteDate = (event: Event): number | null => {
 		const item = latestCompletionDates.value.find(record => record.eventId === event.id)
 		return item != null ? item.lastCompleteDate : null
+	}
+
+	const isCompletedToday = (eventId: number): boolean => {
+		return todayCompletedEventIds.value.includes(eventId)
+	}
+
+	const isCompletedEvent = (event: Event): boolean => {
+		const lastCompleteDate = getLastCompleteDate(event)
+		return isCompletedToday(event.id)
+			|| EventManager.isFixedDateCompleted(event, lastCompleteDate)
+			|| (event.isTerminated && lastCompleteDate != null)
 	}
 
 	const matchesStatus = (event: Event): boolean => {
@@ -150,32 +224,24 @@
 		}
 
 		if (selectedStatus.value.id === 1) {
-			return !event.isTerminated
+			return event.isTerminated == false && isCompletedEvent(event) == false
+		}
+
+		if (selectedStatus.value.id === 2) {
+			return isCompletedEvent(event)
 		}
 
 		return event.isTerminated
 	}
 
-	const isCompletedToday = (eventId: number): boolean => {
-		return todayCompletedEventIds.value.includes(eventId)
-	}
-
-	const isCompletedEvent = (event: Event): boolean => {
-		return isCompletedToday(event.id) || EventManager.isFixedDateCompleted(event, getLastCompleteDate(event))
-	}
-
-	const shouldHideCompletedEvent = (event: Event): boolean => {
-		return hideCompletedToday.value && event.isTerminated == false && isCompletedEvent(event)
-	}
-
 	const getEventDisplayGroup = (event: Event): number => {
-		if (event.isTerminated == false && isCompletedEvent(event) == false) {
-			return 0
-		}
-		if (isCompletedEvent(event) && event.isTerminated == false) {
+		if (isCompletedEvent(event)) {
 			return 1
 		}
-		return 2
+		if (event.isTerminated) {
+			return 2
+		}
+		return 0
 	}
 
 	const getCompletionSortTime = (event: Event): number => {
@@ -184,7 +250,7 @@
 	}
 
 	const compareEventsForDisplay = (a: Event, b: Event): number => {
-		if (selectedStatus.value != null && selectedStatus.value.id === 2) {
+		if (selectedStatus.value != null && selectedStatus.value.id === 3) {
 			return 0
 		}
 
@@ -215,14 +281,24 @@
 		return status != null ? status.name : '全部状态'
 	})
 
+	const selectedLabelOptionIndex = computed(() => {
+		const label = selectedLabel.value
+		if (label == null) return 0
+		const index = labelOptions.value.findIndex(item => item.id === label.id)
+		return index >= 0 ? index : 0
+	})
+
+	const selectedStatusOptionIndex = computed(() => {
+		const status = selectedStatus.value
+		if (status == null) return 0
+		const index = statusOptions.value.findIndex(item => item.id === status.id)
+		return index >= 0 ? index : 0
+	})
+
 	// 筛选事件
 	const filteredEvents = computed<Event[]>(() => {
 		return events.value.filter((event): boolean => {
 			if (matchesStatus(event) == false) {
-				return false
-			}
-
-			if (shouldHideCompletedEvent(event)) {
 				return false
 			}
 
@@ -274,14 +350,14 @@
 	// 获取天数文本
 	const getDaysText = (event: Event): string => {
 		const lastCompleteDate = getLastCompleteDate(event)
-		if (event.isTerminated) {
-			return '已终止'
-		}
 		if (isCompletedToday(event.id)) {
 			return '已完成'
 		}
-		if (EventManager.isFixedDateCompleted(event, lastCompleteDate)) {
+		if (EventManager.isFixedDateCompleted(event, lastCompleteDate) || (event.isTerminated && lastCompleteDate != null)) {
 			return '已完成'
+		}
+		if (event.isTerminated) {
+			return '已终止'
 		}
 
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastCompleteDate)
@@ -326,42 +402,59 @@
 		})
 	}
 
-	// 标签筛选改变
-	const onLabelChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e, 'value')
+	const openLabelFilter = () => {
+		showLabelFilterModal.value = true
+	}
+
+	const closeLabelFilter = () => {
+		showLabelFilterModal.value = false
+	}
+
+	const selectLabelFilter = (index: number) => {
 		if (index === 0) {
 			selectedLabel.value = null
 		} else {
 			selectedLabel.value = labelOptions.value[index]
 		}
+		closeLabelFilter()
 		loadData()
 	}
 
-	// 状态筛选改变
-	const onStatusChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e, 'value')
+	const openStatusFilter = () => {
+		showStatusFilterModal.value = true
+	}
+
+	const closeStatusFilter = () => {
+		showStatusFilterModal.value = false
+	}
+
+	const selectStatusFilter = (index: number) => {
 		if (index === 0) {
 			selectedStatus.value = null
 		} else {
 			selectedStatus.value = statusOptions.value[index]
 		}
+		closeStatusFilter()
 		loadData()
-	}
-
-	const toggleHideCompleted = () => {
-		hideCompletedToday.value = !hideCompletedToday.value
-	}
-
-	const startPomodoro = (eventId: number) => {
-		uni.navigateTo({
-			url: `/pages/pomodoro/index?eventId=${eventId}&autoStart=1`
-		})
 	}
 
 	// 跳转到添加页面
 	const goToAdd = () => {
 		uni.navigateTo({
 			url: '/pages/event/add'
+		})
+	}
+
+	const goToAccount = () => {
+		uni.switchTab({
+			url: '/pages/account/index'
+		})
+	}
+
+	const goToEventLabels = () => {
+		uni.setStorageSync('donelog_label_manage_kind', 'event')
+		uni.navigateTo({
+			url: '/pages/my/labels?kind=event'
 		})
 	}
 
@@ -396,11 +489,93 @@
 		padding-bottom: 100px;
 	}
 
+	.today-card {
+		background: linear-gradient(135deg, #24323a, #1f7a72);
+		margin: 10px 14px 8px;
+		padding: 12px;
+		border-radius: 20px;
+		box-shadow: 0 12px 24px rgba(31, 122, 114, 0.16);
+	}
+
+	.today-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 10px;
+	}
+
+	.today-kicker {
+		font-size: 12px;
+		color: #bfe4dc;
+		margin-bottom: 6px;
+	}
+
+	.today-title {
+		font-size: 20px;
+		font-weight: bold;
+		color: #fff9f2;
+	}
+
+	.today-badge {
+		height: 32px;
+		padding: 0 10px;
+		border-radius: 16px;
+		background-color: rgba(255, 255, 255, 0.14);
+		justify-content: center;
+		align-items: center;
+		border-width: 1px;
+		border-style: solid;
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.today-badge-text {
+		font-size: 12px;
+		color: #fff9f2;
+		font-weight: 600;
+	}
+
+	.today-grid {
+		flex-direction: row;
+	}
+
+	.today-metric {
+		flex: 1;
+		background-color: rgba(255, 255, 255, 0.12);
+		border-radius: 16px;
+		padding: 10px 8px;
+		margin-right: 8px;
+		min-width: 0;
+	}
+
+	.last-today-metric {
+		margin-right: 0;
+	}
+
+	.today-value {
+		font-size: 16px;
+		font-weight: bold;
+		color: #fff9f2;
+		margin-bottom: 5px;
+	}
+
+	.today-value.expense {
+		color: #ffd8ca;
+	}
+
+	.today-value.income {
+		color: #c9f0e8;
+	}
+
+	.today-label {
+		font-size: 10px;
+		color: #d8e6e3;
+	}
+
 	/* 搜索和筛选 */
 	.filter-bar {
 		background-color: #fff9f2;
-		margin: 14px 14px 10px;
-		padding: 10px;
+		margin: 10px 14px 8px;
+		padding: 8px;
 		flex-direction: row;
 		align-items: center;
 		border-radius: 22px;
@@ -412,7 +587,7 @@
 
 	.search-input {
 		flex: 1;
-		height: 38px;
+		height: 34px;
 		background-color: #fffdf9;
 		border-radius: 20px;
 		padding: 0 15px;
@@ -435,6 +610,13 @@
 		margin-left: 6px;
 	}
 
+	.filter-btn-text {
+		font-size: 12px;
+		color: #24323a;
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
 	.arrow {
 		margin-left: 5px;
 		font-size: 10px;
@@ -445,37 +627,27 @@
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
-		margin: 0 14px 10px;
+		margin: 0 14px 8px;
 	}
 
-	.quick-chip {
-		min-height: 32px;
+	.quick-manage-btn {
+		height: 30px;
 		flex-direction: row;
 		align-items: center;
 		justify-content: center;
 		padding: 0 12px;
-		border-radius: 16px;
-		background-color: #f2ebe2;
-		color: #4d5b67;
-		font-size: 12px;
+		border-radius: 15px;
+		background-color: #fff9f2;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eadfd2;
 	}
 
-	.quick-chip-text {
+	.quick-manage-text {
 		font-size: 12px;
-		color: #4d5b67;
-		line-height: 16px;
-	}
-
-	.quick-chip.active {
-		background-color: #1f7a72;
-		border-color: #1f7a72;
-	}
-
-	.quick-chip-text.active {
-		color: #fff;
+		color: #1f7a72;
+		font-weight: 600;
+		line-height: 30px;
 	}
 
 	.quick-count {
@@ -486,7 +658,7 @@
 	/* 事件列表 */
 	.event-list {
 		flex: 1;
-		padding: 12px 14px 0;
+		padding: 6px 14px 142px;
 	}
 
 	.event-card {
@@ -548,7 +720,8 @@
 		flex-direction: row;
 		flex-wrap: wrap;
 		flex: 1;
-		padding-right: 10px;
+		padding-right: 8px;
+		min-width: 0;
 	}
 
 	.tag {
@@ -583,47 +756,47 @@
 	}
 
 	.action-btn {
-		margin-left: 10px;
-		font-size: 13px;
-		font-weight: 600;
-		padding: 0 14px;
+		width: 64px;
 		height: 38px;
-		line-height: 38px;
 		border-radius: 999px;
+		justify-content: center;
+		align-items: center;
 	}
 
-	.compact-btn {
-		height: 38px;
+	.action-btn-text {
+		font-size: 13px;
+		font-weight: 600;
 		line-height: 38px;
-		padding: 0 14px;
-		margin-left: 0;
 	}
 
 	.footer-actions {
 		flex-direction: row;
 		align-items: center;
 		flex-shrink: 0;
-	}
-
-	.start-btn {
-		background-color: #f2ebe2;
-		color: #4d5b67;
-		margin-right: 8px;
+		width: 64px;
 	}
 
 	.complete-btn {
 		background-color: #1f7a72;
-		color: #fff;
 		box-shadow: 0 8px 18px rgba(31, 122, 114, 0.18);
 	}
 
+	.complete-btn-text {
+		color: #fff;
+	}
+
 	/* 空状态 */
+	.empty-state-wrap {
+		padding-bottom: 106px;
+	}
+
 	.empty-tip {
 		text-align: center;
-		padding: 72px 22px;
+		padding: 24px 16px 26px;
+		margin-bottom: 0;
 		color: #8792a1;
 		background: linear-gradient(180deg, #fffaf3, #f8f0e5);
-		border-radius: 28px;
+		border-radius: 22px;
 		border-width: 1px;
 		border-style: dashed;
 		border-color: #e6d8ca;
@@ -632,21 +805,21 @@
 	}
 
 	.empty-icon {
-		font-size: 26px;
+		font-size: 22px;
 		color: #c5b8aa;
-		margin-bottom: 10px;
-	}
-
-	.empty-title {
-		font-size: 16px;
-		font-weight: bold;
-		color: #4d5b67;
 		margin-bottom: 8px;
 	}
 
+	.empty-title {
+		font-size: 15px;
+		font-weight: bold;
+		color: #4d5b67;
+		margin-bottom: 6px;
+	}
+
 	.empty-desc {
-		font-size: 13px;
-		line-height: 1.6;
+		font-size: 12px;
+		line-height: 1.45;
 		color: #8792a1;
 		padding: 0 16px;
 	}
@@ -673,6 +846,79 @@
 		font-size: 32px;
 		color: #fff;
 		font-weight: 400;
+	}
+
+	.modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.42);
+		justify-content: center;
+		align-items: center;
+		z-index: 1200;
+	}
+
+	.filter-modal-content {
+		width: 82%;
+		max-height: 520px;
+		background-color: #fffaf3;
+		border-radius: 22px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.modal-title {
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 12px;
+	}
+
+	.filter-option {
+		height: 48px;
+		border-radius: 16px;
+		background-color: #fffdf9;
+		border-width: 1px;
+		border-style: solid;
+		border-color: transparent;
+		padding: 0 12px;
+		margin-bottom: 8px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.filter-option.active {
+		background-color: #e8f4f2;
+		border-color: #d7ece8;
+	}
+
+	.filter-option-left {
+		flex-direction: row;
+		align-items: center;
+		flex: 1;
+	}
+
+	.label-color-dot {
+		width: 14px;
+		height: 14px;
+		border-radius: 7px;
+		margin-right: 8px;
+	}
+
+	.filter-option-text {
+		font-size: 15px;
+		color: #24323a;
+	}
+
+	.filter-option-text.active,
+	.filter-option-check {
+		color: #1f7a72;
+		font-weight: bold;
 	}
 
 </style>

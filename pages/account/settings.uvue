@@ -1,0 +1,1158 @@
+<template>
+	<scroll-view direction="vertical" style="flex: 1" class="container">
+		<view class="section-card compact-section-card">
+			<view class="section-header compact-section-header">
+				<view class="section-heading">
+					<text class="section-title">记账标签</text>
+					<text class="section-desc">维护分类标签、颜色和排序。</text>
+				</view>
+				<button class="link-btn" @click="goToLabels">标签管理</button>
+			</view>
+		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">支付方式</text>
+					<text class="section-desc">新增常用支付方式，并指定新增账单默认选中的方式。</text>
+				</view>
+				<button class="link-btn" @click="openPaymentMethodModal(null)">新增</button>
+			</view>
+			<view class="manage-list">
+				<view class="manage-row" v-for="method in paymentMethods" :key="method.id">
+					<view class="manage-main" @click="openPaymentMethodModal(method)">
+						<text class="manage-name">{{method.name}}</text>
+						<text class="manage-meta">{{method.isDefault ? '默认支付方式' : '可用于记账和自动续费'}}</text>
+					</view>
+					<view class="manage-actions">
+						<view class="mini-action primary" v-if="method.isDefault == false" @click.stop="setDefaultPaymentMethod(method.id)"><text class="mini-action-text primary">默认</text></view>
+						<view class="mini-action" @click.stop="openPaymentMethodModal(method)"><text class="mini-action-text">改</text></view>
+						<view class="mini-action danger" @click.stop="openDeletePaymentMethodDialog(method)"><text class="mini-action-text danger">删</text></view>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">本月预算</text>
+					<text class="section-desc">{{monthlyBudget > 0 ? budgetStatusText : '设置后会自动跟踪本月支出。'}}</text>
+				</view>
+				<button class="link-btn" @click="openBudgetModal">{{monthlyBudget > 0 ? '调整' : '设置'}}</button>
+			</view>
+			<view v-if="monthlyBudget > 0">
+				<view class="budget-numbers">
+					<text class="budget-used">已用 ¥{{monthOverview.expense.toFixed(2)}}</text>
+					<text class="budget-total">预算 ¥{{monthlyBudget.toFixed(2)}}</text>
+				</view>
+				<view class="budget-bar">
+					<view class="budget-progress" :class="{ over: budgetRemaining < 0 }" :style="{ width: budgetUsedPercent + '%' }"></view>
+				</view>
+			</view>
+		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">标签预算</text>
+					<text class="section-desc">按餐饮、交通等记账标签拆分本月支出预算。</text>
+				</view>
+				<button class="link-btn" @click="openLabelBudgetModal(0)">设置</button>
+			</view>
+			<view v-if="visibleLabelBudgetOverviews.length > 0">
+				<view class="budget-item" v-for="item in visibleLabelBudgetOverviews" :key="item.labelId" @click="openLabelBudgetModal(item.labelId)">
+					<view class="budget-item-top">
+						<view class="budget-label">
+							<view class="label-dot" :style="{ backgroundColor: getLabelColor(item.labelId) }"></view>
+							<text class="budget-name">{{getLabelName(item.labelId)}}</text>
+						</view>
+						<text class="budget-status" :class="{ over: item.isOverBudget }">{{getLabelBudgetStatus(item)}}</text>
+					</view>
+					<view class="budget-bar slim">
+						<view class="budget-progress slim-progress" :class="{ over: item.isOverBudget }" :style="{ width: item.usedPercent + '%' }"></view>
+					</view>
+					<view class="budget-meta">
+						<text class="budget-meta-text">已用 ¥{{item.usedAmount.toFixed(2)}}</text>
+						<text class="budget-meta-text">预算 ¥{{item.monthlyBudget.toFixed(2)}}</text>
+					</view>
+				</view>
+			</view>
+			<view class="empty-card" v-else>
+				<text>还没有设置标签预算</text>
+			</view>
+		</view>
+
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-heading">
+					<text class="section-title">自动续费</text>
+					<text class="section-desc">每月指定日期自动生成支出账单。</text>
+				</view>
+				<button class="link-btn" @click="openRenewalModal(null)">新增</button>
+			</view>
+			<view class="manage-list" v-if="autoRenewals.length > 0">
+				<view class="manage-row" v-for="renewal in autoRenewals" :key="renewal.id">
+					<view class="manage-main" @click="openRenewalModal(renewal)">
+						<text class="manage-name">{{renewal.name}}</text>
+						<text class="manage-meta">下次 {{formatDate(renewal.nextChargeDate)}} · {{getPaymentMethodName(renewal.paymentMethodId)}}</text>
+					</view>
+					<view class="manage-actions">
+						<text class="renewal-amount">¥{{renewal.amount.toFixed(2)}}</text>
+						<view class="mini-action primary" :class="{ muted: renewal.isEnabled == false }" @click.stop="toggleRenewal(renewal)">
+							<text class="mini-action-text primary">{{renewal.isEnabled ? '启用' : '停用'}}</text>
+						</view>
+						<view class="mini-action danger" @click.stop="openDeleteRenewalDialog(renewal)"><text class="mini-action-text danger">删</text></view>
+					</view>
+				</view>
+			</view>
+			<view class="empty-card" v-else>
+				<text>还没有自动续费项目</text>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showPaymentMethodModal" @click="hidePaymentMethodModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">{{editingPaymentMethodId > 0 ? '编辑支付方式' : '新增支付方式'}}</text>
+				<view class="form-item">
+					<text class="form-label">名称</text>
+					<input class="input" v-model="paymentMethodName" placeholder="例如：现金、信用卡" confirm-type="done" @confirm="savePaymentMethod" />
+				</view>
+				<text class="error-tip" v-if="paymentMethodError">{{paymentMethodError}}</text>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hidePaymentMethodModal">取消</button>
+					<button class="confirm-btn" @click.stop="savePaymentMethod">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showDeletePaymentMethodModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">删除支付方式</text>
+				<text class="modal-desc">删除「{{pendingDeletePaymentMethodName}}」后，相关账单和自动续费会改用默认支付方式。</text>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideDeletePaymentMethodDialog">取消</button>
+					<button class="confirm-btn danger-confirm-btn" @click.stop="confirmDeletePaymentMethod">确认删除</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showBudgetModal" @click="hideBudgetModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">设置月预算</text>
+				<view class="form-item">
+					<text class="form-label">每月支出预算</text>
+					<input class="input" type="digit" v-model="budgetAmount" placeholder="例如：3000" confirm-type="done" @input="clearBudgetError" @confirm="saveBudget" />
+					<text class="error-tip" v-if="budgetError">{{budgetError}}</text>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="clearBudget">清空</button>
+					<button class="confirm-btn" @click.stop="saveBudget">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showLabelBudgetModal" @click="hideLabelBudgetModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">设置标签预算</text>
+				<view class="form-item">
+					<text class="form-label">预算标签</text>
+					<picker mode="selector" :range="labels" range-key="name" :value="selectedBudgetLabelIndex" @change="onLabelBudgetChange">
+						<view class="picker"><text>{{selectedBudgetLabelName}}</text></view>
+					</picker>
+				</view>
+				<view class="form-item">
+					<text class="form-label">每月支出预算</text>
+					<input class="input" type="digit" v-model="labelBudgetAmount" placeholder="例如：800" confirm-type="done" @input="clearLabelBudgetError" @confirm="saveLabelBudget" />
+					<text class="error-tip" v-if="labelBudgetError">{{labelBudgetError}}</text>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="clearLabelBudget">清空</button>
+					<button class="confirm-btn" @click.stop="saveLabelBudget">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalModal && !showRenewalLabelSelector" @click="hideRenewalModal">
+			<view class="modal-content tall-modal-content" @click.stop>
+				<text class="modal-title">{{editingRenewalId > 0 ? '编辑自动续费' : '新增自动续费'}}</text>
+				<scroll-view direction="vertical" class="form-body">
+					<view class="form-item">
+						<text class="form-label">名称</text>
+						<input class="input" v-model="renewalName" placeholder="例如：视频会员、云存储" />
+					</view>
+					<view class="form-item">
+						<text class="form-label">扣款金额</text>
+						<input class="input" type="digit" v-model="renewalAmount" placeholder="请输入金额" />
+					</view>
+					<view class="form-item">
+						<text class="form-label">支付方式</text>
+						<picker mode="selector" :range="paymentMethodNames" :value="selectedRenewalPaymentMethodIndex" @change="onRenewalPaymentMethodChange">
+							<view class="picker"><text>{{selectedRenewalPaymentMethodName}}</text></view>
+						</picker>
+					</view>
+					<view class="form-item">
+						<text class="form-label">下次扣款日期</text>
+						<picker mode="date" :value="renewalDate" @change="onRenewalDateChange">
+							<view class="picker"><text>{{renewalDate}}</text></view>
+						</picker>
+					</view>
+					<view class="form-item">
+						<text class="form-label">标签</text>
+						<view class="tag-selector" @click="showRenewalLabelSelector = true">
+							<view class="selected-tags">
+								<text class="tag" v-for="labelId in renewalLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
+									{{getLabelName(labelId)}}
+								</text>
+								<text class="placeholder" v-if="renewalLabelIds.length === 0">请选择标签</text>
+							</view>
+						</view>
+					</view>
+					<view class="form-item last-form-item">
+						<text class="form-label">备注</text>
+						<textarea class="textarea" v-model="renewalRemark" placeholder="可选" />
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideRenewalModal">取消</button>
+					<button class="confirm-btn" @click.stop="saveRenewal">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalLabelSelector" @click="showRenewalLabelSelector = false">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">选择自动续费标签</text>
+				<scroll-view direction="vertical" class="selector-body">
+					<view class="selector-item" :class="{ selected: renewalLabelIds.includes(label.id) }" v-for="label in labels" :key="label.id" @click="toggleRenewalLabel(label.id)">
+						<view class="selector-left">
+							<view class="label-dot" :style="{ backgroundColor: label.color }"></view>
+							<text class="selector-name">{{label.name}}</text>
+						</view>
+						<text class="selector-check" :class="{ visible: renewalLabelIds.includes(label.id) }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="confirm-btn single-confirm-btn" @click.stop="showRenewalLabelSelector = false">确定</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showDeleteRenewalModal">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">删除自动续费</text>
+				<text class="modal-desc">确定删除「{{pendingDeleteRenewalName}}」吗？已生成的账单不会删除。</text>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideDeleteRenewalDialog">取消</button>
+					<button class="confirm-btn danger-confirm-btn" @click.stop="confirmDeleteRenewal">确认删除</button>
+				</view>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { AccountManager, AccountOverview, LabelBudgetOverview } from '@/utils/accountManager.uts'
+	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AutoRenewal, Label, PaymentMethod } from '@/utils/storage.uts'
+
+	const labels = ref<Label[]>([])
+	const paymentMethods = ref<PaymentMethod[]>([])
+	const autoRenewals = ref<AutoRenewal[]>([])
+	const monthOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
+	const monthlyBudget = ref(0)
+	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
+
+	const showPaymentMethodModal = ref(false)
+	const showDeletePaymentMethodModal = ref(false)
+	const showBudgetModal = ref(false)
+	const showLabelBudgetModal = ref(false)
+	const showRenewalModal = ref(false)
+	const showRenewalLabelSelector = ref(false)
+	const showDeleteRenewalModal = ref(false)
+
+	const editingPaymentMethodId = ref(0)
+	const paymentMethodName = ref('')
+	const paymentMethodError = ref('')
+	const pendingDeletePaymentMethodId = ref(0)
+	const pendingDeletePaymentMethodName = ref('')
+
+	const budgetAmount = ref('')
+	const budgetError = ref('')
+	const selectedBudgetLabelId = ref(0)
+	const labelBudgetAmount = ref('')
+	const labelBudgetError = ref('')
+
+	const editingRenewalId = ref(0)
+	const renewalName = ref('')
+	const renewalAmount = ref('')
+	const renewalPaymentMethodId = ref(1)
+	const renewalDate = ref('')
+	const renewalLabelIds = ref<number[]>([])
+	const renewalRemark = ref('')
+	const pendingDeleteRenewalId = ref(0)
+	const pendingDeleteRenewalName = ref('')
+
+	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
+		const detail = e['detail']
+		return detail != null ? detail as UTSJSONObject : null
+	}
+
+	const getDetailStringValue = (e: UTSJSONObject): string => {
+		const detail = getDetailObject(e)
+		if (detail == null) return ''
+		const value = detail['value']
+		return value != null ? `${value}` : ''
+	}
+
+	const getDetailNumberValue = (e: UTSJSONObject): number => {
+		const value = getDetailStringValue(e)
+		const parsed = parseInt(value)
+		return Number.isNaN(parsed) ? 0 : parsed
+	}
+
+	const formatDate = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		const year = date.getFullYear()
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
+		return `${year}-${month}-${day}`
+	}
+
+	const parseLabelIds = (labelIdList: string): number[] => {
+		if (labelIdList.length === 0) return []
+		const validLabelIds = labels.value.map(label => label.id)
+		return labelIdList
+			.split(',')
+			.map(id => parseInt(id))
+			.filter(id => !Number.isNaN(id) && validLabelIds.includes(id))
+	}
+
+	const loadData = () => {
+		LabelManager.repairLabelData()
+		AccountManager.processDueAutoRenewals()
+		labels.value = LabelManager.getSortedLabels('account')
+		paymentMethods.value = AccountManager.getPaymentMethods()
+		autoRenewals.value = AccountManager.getAutoRenewals()
+		monthOverview.value = AccountManager.getOverview('month')
+		monthlyBudget.value = AccountManager.getBudgetSettings().monthlyExpenseBudget
+		labelBudgetOverviews.value = AccountManager.getMonthlyLabelBudgetOverviews()
+	}
+
+	const budgetRemaining = computed(() => monthlyBudget.value - monthOverview.value.expense)
+	const budgetUsedPercent = computed(() => {
+		if (monthlyBudget.value <= 0) return 0
+		return Math.min(100, Math.round(monthOverview.value.expense / monthlyBudget.value * 100))
+	})
+	const budgetStatusText = computed(() => {
+		if (monthlyBudget.value <= 0) return ''
+		if (budgetRemaining.value < 0) return `本月预算已超出 ¥${Math.abs(budgetRemaining.value).toFixed(2)}`
+		return `本月预算剩余 ¥${budgetRemaining.value.toFixed(2)}`
+	})
+	const visibleLabelBudgetOverviews = computed<LabelBudgetOverview[]>(() => {
+		return labelBudgetOverviews.value.filter(item => item.monthlyBudget > 0)
+	})
+	const selectedBudgetLabelIndex = computed(() => {
+		const index = labels.value.findIndex(item => item.id === selectedBudgetLabelId.value)
+		return index >= 0 ? index : 0
+	})
+	const selectedBudgetLabelName = computed(() => {
+		if (labels.value.length === 0) return '暂无标签'
+		const label = labels.value.find(item => item.id === selectedBudgetLabelId.value)
+		return label != null ? label.name : labels.value[0].name
+	})
+	const paymentMethodNames = computed<string[]>(() => {
+		return paymentMethods.value.map(method => method.name)
+	})
+	const selectedRenewalPaymentMethodIndex = computed(() => {
+		const index = paymentMethods.value.findIndex(method => method.id === renewalPaymentMethodId.value)
+		return index >= 0 ? index : 0
+	})
+	const selectedRenewalPaymentMethodName = computed(() => {
+		const method = paymentMethods.value.find(item => item.id === renewalPaymentMethodId.value)
+		if (method != null) return method.name
+		return paymentMethods.value.length > 0 ? paymentMethods.value[0].name : '未设置'
+	})
+
+	const getLabelName = (labelId: number): string => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.name : '未知标签'
+	}
+
+	const getLabelColor = (labelId: number): string => {
+		const label = labels.value.find(item => item.id === labelId)
+		return label != null ? label.color : '#B7A995'
+	}
+
+	const getLabelBudgetStatus = (item: LabelBudgetOverview): string => {
+		if (item.isOverBudget) return `超出 ¥${Math.abs(item.remainingAmount).toFixed(2)}`
+		return `剩余 ¥${item.remainingAmount.toFixed(2)}`
+	}
+
+	const getPaymentMethodName = (paymentMethodId: number): string => {
+		return AccountManager.getPaymentMethodName(paymentMethodId)
+	}
+
+	const goToLabels = () => {
+		uni.setStorageSync('donelog_label_manage_kind', 'account')
+		uni.navigateTo({
+			url: '/pages/my/labels?kind=account'
+		})
+	}
+
+	const openPaymentMethodModal = (method: PaymentMethod | null) => {
+		paymentMethodError.value = ''
+		if (method == null) {
+			editingPaymentMethodId.value = 0
+			paymentMethodName.value = ''
+		} else {
+			editingPaymentMethodId.value = method.id
+			paymentMethodName.value = method.name
+		}
+		showPaymentMethodModal.value = true
+	}
+
+	const hidePaymentMethodModal = () => {
+		showPaymentMethodModal.value = false
+		paymentMethodError.value = ''
+	}
+
+	const savePaymentMethod = () => {
+		const name = paymentMethodName.value.trim()
+		if (name.length === 0) {
+			paymentMethodError.value = '请输入支付方式名称'
+			return
+		}
+
+		let success = false
+		if (editingPaymentMethodId.value > 0) {
+			const current = paymentMethods.value.find(method => method.id == editingPaymentMethodId.value)
+			if (current == null) return
+			success = AccountManager.updatePaymentMethod({ ...current, name })
+		} else {
+			success = AccountManager.addPaymentMethod({ name })
+		}
+
+		if (success == false) {
+			paymentMethodError.value = '保存失败，可能已存在同名支付方式'
+			return
+		}
+		hidePaymentMethodModal()
+		loadData()
+		uni.showToast({ title: '支付方式已保存', icon: 'success' })
+	}
+
+	const setDefaultPaymentMethod = (paymentMethodId: number) => {
+		if (AccountManager.setDefaultPaymentMethod(paymentMethodId)) {
+			loadData()
+			uni.showToast({ title: '已设为默认', icon: 'success' })
+		}
+	}
+
+	const openDeletePaymentMethodDialog = (method: PaymentMethod) => {
+		if (paymentMethods.value.length <= 1) {
+			uni.showToast({ title: '至少保留一种支付方式', icon: 'none' })
+			return
+		}
+		pendingDeletePaymentMethodId.value = method.id
+		pendingDeletePaymentMethodName.value = method.name
+		showDeletePaymentMethodModal.value = true
+	}
+
+	const hideDeletePaymentMethodDialog = () => {
+		showDeletePaymentMethodModal.value = false
+		pendingDeletePaymentMethodId.value = 0
+		pendingDeletePaymentMethodName.value = ''
+	}
+
+	const confirmDeletePaymentMethod = () => {
+		const paymentMethodId = pendingDeletePaymentMethodId.value
+		if (paymentMethodId <= 0) return
+		const success = AccountManager.deletePaymentMethod(paymentMethodId)
+		const deleted = AccountManager.getPaymentMethods().find(method => method.id == paymentMethodId) == null
+		if (success == false || deleted == false) {
+			uni.showToast({ title: '删除失败', icon: 'none' })
+			return
+		}
+		hideDeletePaymentMethodDialog()
+		loadData()
+		uni.showToast({ title: '删除成功', icon: 'success' })
+	}
+
+	const openBudgetModal = () => {
+		budgetAmount.value = monthlyBudget.value > 0 ? `${monthlyBudget.value}` : ''
+		budgetError.value = ''
+		showBudgetModal.value = true
+	}
+
+	const hideBudgetModal = () => {
+		showBudgetModal.value = false
+		budgetError.value = ''
+	}
+
+	const clearBudgetError = () => {
+		if (budgetError.value.length > 0) budgetError.value = ''
+	}
+
+	const saveBudget = () => {
+		const amount = parseFloat(budgetAmount.value)
+		if (Number.isNaN(amount) || amount <= 0) {
+			budgetError.value = '请输入大于 0 的预算金额'
+			return
+		}
+		if (AccountManager.saveMonthlyExpenseBudget(amount)) {
+			hideBudgetModal()
+			loadData()
+			uni.showToast({ title: '预算已保存', icon: 'success' })
+		} else {
+			budgetError.value = '保存失败，请稍后再试'
+		}
+	}
+
+	const clearBudget = () => {
+		if (AccountManager.saveMonthlyExpenseBudget(0)) {
+			hideBudgetModal()
+			loadData()
+			uni.showToast({ title: '预算已清空', icon: 'success' })
+		} else {
+			budgetError.value = '清空失败，请稍后再试'
+		}
+	}
+
+	const openLabelBudgetModal = (labelId: number) => {
+		if (labels.value.length === 0) {
+			uni.showToast({ title: '请先创建记账标签', icon: 'none' })
+			return
+		}
+		selectedBudgetLabelId.value = labelId > 0 ? labelId : labels.value[0].id
+		labelBudgetAmount.value = `${AccountManager.getLabelBudgetAmount(selectedBudgetLabelId.value)}`
+		if (labelBudgetAmount.value === '0') {
+			labelBudgetAmount.value = ''
+		}
+		labelBudgetError.value = ''
+		showLabelBudgetModal.value = true
+	}
+
+	const hideLabelBudgetModal = () => {
+		showLabelBudgetModal.value = false
+		labelBudgetError.value = ''
+	}
+
+	const clearLabelBudgetError = () => {
+		if (labelBudgetError.value.length > 0) labelBudgetError.value = ''
+	}
+
+	const onLabelBudgetChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e)
+		if (index < 0 || index >= labels.value.length) return
+		selectedBudgetLabelId.value = labels.value[index].id
+		const amount = AccountManager.getLabelBudgetAmount(selectedBudgetLabelId.value)
+		labelBudgetAmount.value = amount > 0 ? `${amount}` : ''
+	}
+
+	const saveLabelBudget = () => {
+		if (selectedBudgetLabelId.value <= 0) {
+			labelBudgetError.value = '请选择标签'
+			return
+		}
+		const amount = parseFloat(labelBudgetAmount.value)
+		if (Number.isNaN(amount) || amount <= 0) {
+			labelBudgetError.value = '请输入大于 0 的预算金额'
+			return
+		}
+		if (AccountManager.saveLabelMonthlyBudget(selectedBudgetLabelId.value, amount)) {
+			hideLabelBudgetModal()
+			loadData()
+			uni.showToast({ title: '标签预算已保存', icon: 'success' })
+		} else {
+			labelBudgetError.value = '保存失败，请稍后再试'
+		}
+	}
+
+	const clearLabelBudget = () => {
+		if (selectedBudgetLabelId.value <= 0) {
+			labelBudgetError.value = '请选择标签'
+			return
+		}
+		if (AccountManager.saveLabelMonthlyBudget(selectedBudgetLabelId.value, 0)) {
+			hideLabelBudgetModal()
+			loadData()
+			uni.showToast({ title: '标签预算已清空', icon: 'success' })
+		} else {
+			labelBudgetError.value = '清空失败，请稍后再试'
+		}
+	}
+
+	const resetRenewalForm = () => {
+		editingRenewalId.value = 0
+		renewalName.value = ''
+		renewalAmount.value = ''
+		renewalPaymentMethodId.value = AccountManager.getDefaultPaymentMethodId()
+		renewalDate.value = formatDate(Date.now())
+		renewalLabelIds.value = []
+		renewalRemark.value = ''
+	}
+
+	const openRenewalModal = (renewal: AutoRenewal | null) => {
+		if (paymentMethods.value.length === 0) paymentMethods.value = AccountManager.getPaymentMethods()
+		showRenewalLabelSelector.value = false
+		if (renewal == null) {
+			resetRenewalForm()
+		} else {
+			editingRenewalId.value = renewal.id
+			renewalName.value = renewal.name
+			renewalAmount.value = `${renewal.amount}`
+			renewalPaymentMethodId.value = renewal.paymentMethodId
+			renewalDate.value = formatDate(renewal.nextChargeDate)
+			renewalLabelIds.value = parseLabelIds(renewal.labelIdList)
+			renewalRemark.value = renewal.remark
+		}
+		showRenewalModal.value = true
+	}
+
+	const hideRenewalModal = () => {
+		showRenewalModal.value = false
+		showRenewalLabelSelector.value = false
+	}
+
+	const onRenewalPaymentMethodChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e)
+		if (index < 0 || index >= paymentMethods.value.length) return
+		renewalPaymentMethodId.value = paymentMethods.value[index].id
+	}
+
+	const onRenewalDateChange = (e: UTSJSONObject) => {
+		renewalDate.value = getDetailStringValue(e)
+	}
+
+	const toggleRenewalLabel = (labelId: number) => {
+		renewalLabelIds.value = renewalLabelIds.value.includes(labelId) ? [] : [labelId]
+	}
+
+	const saveRenewal = () => {
+		const amount = parseFloat(renewalAmount.value)
+		if (renewalName.value.trim().length === 0) {
+			uni.showToast({ title: '请输入名称', icon: 'none' })
+			return
+		}
+		if (Number.isNaN(amount) || amount <= 0) {
+			uni.showToast({ title: '请输入正确金额', icon: 'none' })
+			return
+		}
+
+		let success = false
+		if (editingRenewalId.value > 0) {
+			const current = autoRenewals.value.find(item => item.id === editingRenewalId.value)
+			if (current == null) return
+			success = AccountManager.updateAutoRenewal({
+				...current,
+				name: renewalName.value.trim(),
+				amount,
+				paymentMethodId: renewalPaymentMethodId.value,
+				labelIdList: renewalLabelIds.value.join(','),
+				nextChargeDate: new Date(renewalDate.value).getTime(),
+				remark: renewalRemark.value.trim()
+			})
+		} else {
+			success = AccountManager.addAutoRenewal({
+				name: renewalName.value.trim(),
+				amount,
+				paymentMethodId: renewalPaymentMethodId.value,
+				labelIdList: renewalLabelIds.value.join(','),
+				nextChargeDate: new Date(renewalDate.value).getTime(),
+				isEnabled: true,
+				remark: renewalRemark.value.trim()
+			})
+		}
+
+		if (success == true) {
+			hideRenewalModal()
+			loadData()
+			uni.showToast({ title: '保存成功', icon: 'success' })
+		}
+	}
+
+	const toggleRenewal = (renewal: AutoRenewal) => {
+		AccountManager.updateAutoRenewal({
+			...renewal,
+			isEnabled: renewal.isEnabled == false
+		})
+		loadData()
+	}
+
+	const openDeleteRenewalDialog = (renewal: AutoRenewal) => {
+		pendingDeleteRenewalId.value = renewal.id
+		pendingDeleteRenewalName.value = renewal.name
+		showDeleteRenewalModal.value = true
+	}
+
+	const hideDeleteRenewalDialog = () => {
+		showDeleteRenewalModal.value = false
+		pendingDeleteRenewalId.value = 0
+		pendingDeleteRenewalName.value = ''
+	}
+
+	const confirmDeleteRenewal = () => {
+		const renewalId = pendingDeleteRenewalId.value
+		if (renewalId <= 0) return
+		const success = AccountManager.deleteAutoRenewal(renewalId)
+		const deleted = AccountManager.getAutoRenewals().find(renewal => renewal.id === renewalId) == null
+		if (success == false || deleted == false) {
+			uni.showToast({ title: '删除失败', icon: 'none' })
+			return
+		}
+		hideDeleteRenewalDialog()
+		loadData()
+		uni.showToast({ title: '删除成功', icon: 'success' })
+	}
+
+	onShow(() => {
+		loadData()
+	})
+
+	onLoad(() => {
+		AccountManager.initIds()
+		loadData()
+	})
+</script>
+
+<style>
+	.container {
+		flex: 1;
+		background-color: #f4efe7;
+		padding: 16px;
+		padding-bottom: 80px;
+	}
+
+	.section-card,
+	.modal-content {
+		background-color: #fffaf3;
+		border-radius: 24px;
+		padding: 18px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+		margin-bottom: 14px;
+	}
+
+	.section-desc {
+		font-size: 13px;
+		line-height: 1.6;
+		color: #75828d;
+	}
+
+	.compact-section-card {
+		padding: 14px 16px;
+	}
+
+	.compact-section-header {
+		margin-bottom: 0;
+	}
+
+	.section-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 14px;
+	}
+
+	.section-heading {
+		flex: 1;
+		padding-right: 12px;
+	}
+
+	.section-title {
+		display: flex;
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 6px;
+	}
+
+	.link-btn {
+		background-color: #1f7a72;
+		color: #fff;
+		font-size: 13px;
+		padding: 0 14px;
+		height: 34px;
+		line-height: 34px;
+		border-radius: 999px;
+		flex-shrink: 0;
+	}
+
+	.manage-list {
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #f1e7dd;
+	}
+
+	.manage-row {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 64px;
+		padding: 12px 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #f1e7dd;
+	}
+
+	.manage-main {
+		flex: 1;
+		min-width: 0;
+		padding-right: 10px;
+	}
+
+	.manage-name {
+		display: flex;
+		font-size: 15px;
+		font-weight: 600;
+		color: #24323a;
+		margin-bottom: 4px;
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.manage-meta {
+		font-size: 12px;
+		color: #7b8791;
+		line-height: 1.4;
+	}
+
+	.manage-actions {
+		flex-direction: row;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.mini-action {
+		width: 38px;
+		height: 32px;
+		padding: 0;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		margin-left: 6px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.mini-action.primary {
+		width: 48px;
+		background-color: #1f7a72;
+	}
+
+	.mini-action.primary.muted {
+		background-color: #c9bdae;
+	}
+
+	.mini-action.danger {
+		background-color: #e07a5f;
+	}
+
+	.mini-action-text {
+		font-size: 12px;
+		color: #4d5b67;
+	}
+
+	.mini-action-text.primary,
+	.mini-action-text.danger {
+		color: #fff;
+	}
+
+	.renewal-amount {
+		font-size: 13px;
+		font-weight: bold;
+		color: #c45d42;
+		margin-right: 2px;
+	}
+
+	.budget-numbers,
+	.budget-item-top,
+	.budget-meta,
+	.budget-label {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.budget-numbers,
+	.budget-item-top,
+	.budget-meta {
+		justify-content: space-between;
+	}
+
+	.budget-used,
+	.budget-total,
+	.budget-meta-text {
+		font-size: 12px;
+		color: #4d5b67;
+	}
+
+	.budget-bar {
+		height: 8px;
+		border-radius: 4px;
+		background-color: #eadfd2;
+		overflow: hidden;
+		margin-top: 8px;
+	}
+
+	.budget-progress {
+		height: 8px;
+		border-radius: 4px;
+		background-color: #1f7a72;
+	}
+
+	.budget-progress.over {
+		background-color: #e07a5f;
+	}
+
+	.budget-item {
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 12px;
+		margin-bottom: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.budget-bar.slim {
+		height: 6px;
+		border-radius: 3px;
+		margin: 8px 0;
+	}
+
+	.budget-progress.slim-progress {
+		height: 6px;
+		border-radius: 3px;
+	}
+
+	.label-dot {
+		width: 12px;
+		height: 12px;
+		border-radius: 6px;
+		margin-right: 8px;
+		flex-shrink: 0;
+	}
+
+	.budget-name {
+		font-size: 14px;
+		font-weight: 600;
+		color: #24323a;
+	}
+
+	.budget-status {
+		font-size: 12px;
+		color: #1f7a72;
+	}
+
+	.budget-status.over {
+		color: #c45d42;
+	}
+
+	.empty-card {
+		background-color: #fffdf9;
+		border-radius: 18px;
+		padding: 20px;
+		align-items: center;
+		color: #8792a1;
+	}
+
+	.modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.36);
+		justify-content: center;
+		align-items: center;
+		padding: 16px;
+		z-index: 1000;
+	}
+
+	.modal-content {
+		width: 100%;
+		max-height: 620px;
+		margin-bottom: 0;
+	}
+
+	.tall-modal-content {
+		max-height: 700px;
+	}
+
+	.form-body,
+	.selector-body {
+		height: 470px;
+		margin-bottom: 12px;
+		padding-right: 8px;
+	}
+
+	.modal-title {
+		font-size: 18px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 12px;
+	}
+
+	.modal-desc {
+		font-size: 13px;
+		line-height: 20px;
+		color: #8792a1;
+		margin-top: 10px;
+	}
+
+	.form-item {
+		margin-bottom: 14px;
+	}
+
+	.last-form-item {
+		margin-bottom: 0;
+	}
+
+	.form-label {
+		display: flex;
+		font-size: 14px;
+		color: #4d5b67;
+		margin-bottom: 8px;
+	}
+
+	.input,
+	.picker,
+	.textarea {
+		background-color: #fffdf9;
+		border-radius: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+		padding: 0 14px;
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.input,
+	.picker {
+		height: 44px;
+		justify-content: center;
+	}
+
+	.textarea {
+		min-height: 80px;
+		padding-top: 10px;
+	}
+
+	.error-tip {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #e07a5f;
+		margin-top: 6px;
+	}
+
+	.tag-selector {
+		min-height: 44px;
+		background-color: #fffdf9;
+		border-radius: 16px;
+		padding: 8px 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+	}
+
+	.selected-tags {
+		flex-direction: row;
+		flex-wrap: wrap;
+		max-height: 52px;
+		overflow: hidden;
+	}
+
+	.tag {
+		font-size: 12px;
+		color: #fff;
+		padding: 4px 10px;
+		border-radius: 999px;
+		margin-right: 6px;
+		margin-bottom: 6px;
+	}
+
+	.placeholder {
+		font-size: 14px;
+		color: #98a2ad;
+	}
+
+	.selector-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		height: 52px;
+		padding: 0 12px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: transparent;
+		border-radius: 16px;
+		margin-bottom: 8px;
+		background-color: #fffdf9;
+	}
+
+	.selector-item.selected {
+		background-color: #e8f4f2;
+		border-color: #d7ece8;
+	}
+
+	.selector-left {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.selector-name {
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.selector-check {
+		width: 28px;
+		font-size: 18px;
+		color: #1f7a72;
+		text-align: center;
+		margin-right: 2px;
+		flex-shrink: 0;
+		opacity: 0;
+	}
+
+	.selector-check.visible {
+		opacity: 1;
+	}
+
+	.modal-footer {
+		flex-direction: row;
+		margin-top: 14px;
+	}
+
+	.cancel-btn,
+	.confirm-btn {
+		flex: 1;
+		height: 44px;
+		line-height: 44px;
+		border-radius: 22px;
+		font-size: 15px;
+	}
+
+	.cancel-btn {
+		background-color: #f0e7dc;
+		color: #4d5b67;
+		margin-right: 10px;
+	}
+
+	.confirm-btn {
+		background-color: #1f7a72;
+		color: #fff;
+		margin-left: 10px;
+	}
+
+	.single-confirm-btn {
+		margin-left: 0;
+	}
+
+	.danger-confirm-btn {
+		background-color: #e07a5f;
+	}
+</style>

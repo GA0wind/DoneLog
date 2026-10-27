@@ -221,6 +221,10 @@
 				})
 				return
 			}
+			if (repeatType.value === 'date' && new Date(nextDueDate.value).getTime() <= Date.now()) {
+				uni.showToast({ title: '请选择未来日期', icon: 'none' })
+				return
+			}
 
 			if (repeatType.value === 'interval') {
 				const interval = parseInt(intervalDays.value)
@@ -283,6 +287,8 @@
 				remark: current.remark,
 				isTerminated: false,
 				terminatedAt: 0,
+				notifyEnabled: current.notifyEnabled,
+				notifyTime: current.notifyTime,
 				createTime: current.createTime,
 				updateTime: current.updateTime
 			}

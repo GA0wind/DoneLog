@@ -1,7 +1,7 @@
 <template>
 	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<!-- 事件信息卡片 -->
-		<view class="event-info">
+		<view class="event-info" v-if="hasEvent">
 			<view class="event-header">
 				<text class="event-name">{{eventName}}</text>
 				<view class="event-status" :class="{ 'overdue': isOverdue }">
@@ -33,6 +33,10 @@
 					<text class="detail-label">下次完成时间：</text>
 					<text class="detail-value">{{formatDate(eventNextDueDate)}}</text>
 				</view>
+				<view class="detail-item" v-if="showNotification">
+					<text class="detail-label">提醒时间：</text>
+					<text class="detail-value">{{eventNotifyTime}}</text>
+				</view>
 				<view class="detail-item" v-if="showRemark">
 					<text class="detail-label">备注：</text>
 					<text class="detail-value">{{eventRemark}}</text>
@@ -43,12 +47,22 @@
 				</view>
 			</view>
 
-			<view class="event-actions">
-				<button class="action-btn edit-btn" @click="goToEdit">编辑</button>
-				<button class="action-btn duplicate-btn" @click="duplicateEvent">复制</button>
-				<button class="action-btn start-btn" v-if="canComplete" @click="startPomodoro">开始</button>
-				<button class="action-btn complete-btn" v-if="canComplete" @click="markComplete">完成</button>
+			<view class="focus-card" v-if="canComplete" @click="startPomodoro">
+				<view>
+					<text class="focus-title">专注推进这个事件</text>
+					<text class="focus-desc">开启一个番茄钟，完成后再回来标记完成。</text>
+				</view>
+				<text class="focus-action">开始番茄钟</text>
 			</view>
+
+			<view class="event-actions">
+				<view class="action-btn edit-btn" @click="goToEdit"><text class="action-btn-text edit-btn-text">编辑</text></view>
+				<view class="action-btn duplicate-btn" @click="duplicateEvent"><text class="action-btn-text duplicate-btn-text">复制</text></view>
+				<view class="action-btn complete-btn" v-if="canComplete" @click="markComplete"><text class="action-btn-text complete-btn-text">完成</text></view>
+			</view>
+		</view>
+		<view class="event-info" v-if="!hasEvent">
+			<text class="empty-title">事件不存在或已被删除</text>
 		</view>
 
 		<!-- 历史记录 -->
@@ -75,11 +89,21 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { Event, Label, CompletionRecord } from '@/utils/storage.uts'
+	import { Event, Label, CompletionRecord, RepeatUnit } from '@/utils/storage.uts'
 
-	// 响应式数据
 	const eventId = ref(0)
-	const event = ref<Event | null>(null)
+	const currentEvent = ref<Event | null>(null)
+	const hasLoadedEvent = ref(false)
+	const eventName = ref('')
+	const eventLabelIdList = ref('')
+	const eventIntervalDays = ref(0)
+	const eventRepeatUnit = ref<RepeatUnit>('day')
+	const eventNextDueDate = ref(0)
+	const eventRemark = ref('')
+	const eventCreateTime = ref(0)
+	const eventIsTerminated = ref(false)
+	const eventNotifyEnabled = ref(false)
+	const eventNotifyTime = ref('09:00')
 	const labels = ref<Label[]>([])
 	const historyRecords = ref<CompletionRecord[]>([])
 
@@ -88,112 +112,79 @@
 		return value != null ? `${value}` : ''
 	}
 
-	// 计算属性
-	const eventName = computed(() => {
-		return event.value != null ? event.value.name : ''
-	})
-
-	const eventIntervalDays = computed(() => {
-		return event.value != null ? event.value.intervalDays : 0
-	})
-
-	const eventRepeatUnit = computed(() => {
-		return event.value != null ? event.value.repeatUnit : 'day'
-	})
-
-	const eventNextDueDate = computed(() => {
-		return event.value != null ? event.value.nextDueDate : 0
-	})
-
-	const eventRemark = computed(() => {
-		return event.value != null ? event.value.remark : ''
-	})
-
-	const eventCreateTime = computed(() => {
-		return event.value != null ? event.value.createTime : 0
-	})
+	const hasEvent = computed(() => hasLoadedEvent.value)
 
 	const showIntervalRepeat = computed(() => {
-		return event.value != null && event.value.intervalDays >= 0 && event.value.nextDueDate <= 0
+		return hasLoadedEvent.value && eventIntervalDays.value >= 0 && eventNextDueDate.value <= 0
 	})
 
 	const showSingleReminder = computed(() => {
-		return event.value != null && event.value.intervalDays < 0 && event.value.nextDueDate <= 0
+		return hasLoadedEvent.value && eventIntervalDays.value < 0 && eventNextDueDate.value <= 0
 	})
 
 	const showNextDueDate = computed(() => {
-		return event.value != null && event.value.nextDueDate > 0
+		return hasLoadedEvent.value && eventNextDueDate.value > 0
 	})
 
 	const showRemark = computed(() => {
-		return event.value != null && event.value.remark.length > 0
+		return hasLoadedEvent.value && eventRemark.value.length > 0
+	})
+
+	const showNotification = computed(() => {
+		return hasLoadedEvent.value && eventNotifyEnabled.value
 	})
 
 	const intervalRepeatText = computed(() => {
-		if (event.value == null) {
-			return ''
-		}
-
-		if (eventRepeatUnit.value === 'month') {
-			return `每 ${eventIntervalDays.value} 个月`
-		}
-
-		if (eventRepeatUnit.value === 'year') {
-			return `每 ${eventIntervalDays.value} 年`
-		}
-
-		if (eventIntervalDays.value === 0) {
-			return '按天，明天再次完成'
-		}
-
+		if (hasLoadedEvent.value == false) return ''
+		if (eventRepeatUnit.value === 'month') return `每 ${eventIntervalDays.value} 个月`
+		if (eventRepeatUnit.value === 'year') return `每 ${eventIntervalDays.value} 年`
+		if (eventIntervalDays.value === 0) return '按天，明天再次完成'
 		return `按天，中间空 ${eventIntervalDays.value} 天`
 	})
 
+	const getCurrentEvent = (): Event | null => {
+		return currentEvent.value
+	}
+
 	const isOverdue = computed(() => {
-		if (event.value == null) return false
-		const latestRecord = historyRecords.value[0]
-		if (EventManager.isFixedDateCompleted(event.value, latestRecord != null ? latestRecord.lastCompleteDate : null)) {
+		const event = getCurrentEvent()
+		if (event == null) return false
+		const latestRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
+		if (EventManager.isFixedDateCompleted(event, latestRecord != null ? latestRecord.lastCompleteDate : null)) {
 			return false
 		}
-		const lastRecord = historyRecords.value[0]
-		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, latestRecord != null ? latestRecord.lastCompleteDate : null)
 		return daysUntilDue < 0
 	})
 
 	const canComplete = computed(() => {
-		if (event.value == null) return false
-		if (event.value.isTerminated) return false
-		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return false
-		const latestRecord = historyRecords.value[0]
-		return EventManager.isFixedDateCompleted(event.value, latestRecord != null ? latestRecord.lastCompleteDate : null) == false
+		const event = getCurrentEvent()
+		if (event == null) return false
+		if (eventIsTerminated.value) return false
+		if (EventManager.isCompletedOnDate(event.id, Date.now())) return false
+		const latestRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
+		return EventManager.isFixedDateCompleted(event, latestRecord != null ? latestRecord.lastCompleteDate : null) == false
 	})
 
 	const statusText = computed(() => {
-		if (event.value == null) return ''
-		if (event.value.isTerminated) return '已终止'
-		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return '已完成'
+		const event = getCurrentEvent()
+		if (event == null) return ''
+		if (EventManager.isCompletedOnDate(event.id, Date.now())) return '已完成'
 
-		const lastRecord = historyRecords.value[0]
-		if (EventManager.isFixedDateCompleted(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)) {
+		const lastRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
+		if (EventManager.isFixedDateCompleted(event, lastRecord != null ? lastRecord.lastCompleteDate : null)) {
 			return '已完成'
 		}
+		if (eventIsTerminated.value) return '已终止'
 
-		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)
-
-		if (daysUntilDue === 0) {
-			return '今天'
-		} else if (daysUntilDue === 1) {
-			return '明天'
-		} else if (daysUntilDue === -1) {
-			return '昨天'
-		} else if (daysUntilDue < 0) {
-			return `已过期 ${Math.abs(daysUntilDue)} 天`
-		} else {
-			return `还有 ${daysUntilDue} 天`
-		}
+		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
+		if (daysUntilDue === 0) return '今天'
+		if (daysUntilDue === 1) return '明天'
+		if (daysUntilDue === -1) return '昨天'
+		if (daysUntilDue < 0) return `已过期 ${Math.abs(daysUntilDue)} 天`
+		return `还有 ${daysUntilDue} 天`
 	})
 
-	// 格式化日期
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
@@ -202,7 +193,6 @@
 		return `${year}-${month}-${day}`
 	}
 
-	// 格式化日期时间
 	const formatDateTime = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
@@ -214,15 +204,14 @@
 	}
 
 	const getEventLabelIds = (): number[] => {
-		if (event.value == null) return []
-		if (event.value.labelIdList.length === 0) return []
-		return event.value.labelIdList
+		if (hasLoadedEvent.value == false || eventLabelIdList.value.length === 0) return []
+		const validLabelIds = labels.value.map(label => label.id)
+		return eventLabelIdList.value
 			.split(',')
 			.map(id => parseInt(id))
-			.filter(id => !Number.isNaN(id))
+			.filter(id => !Number.isNaN(id) && validLabelIds.includes(id))
 	}
 
-	// 获取时间文本
 	const getTimeText = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const hours = `${date.getHours()}`.padStart(2, '0')
@@ -230,26 +219,25 @@
 		return `${hours}:${minutes}`
 	}
 
-	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
 		const label = labels.value.find(l => l.id === labelId)
 		return label != null ? label.name : ''
 	}
 
-	// 获取标签颜色
 	const getLabelColor = (labelId: number): string => {
 		const label = labels.value.find(l => l.id === labelId)
 		return label != null ? label.color : '#007AFF'
 	}
 
-	// 跳转到编辑页面
 	const goToEdit = () => {
+		if (hasLoadedEvent.value == false) return
 		uni.navigateTo({
 			url: `/pages/event/edit?id=${eventId.value}`
 		})
 	}
 
 	const duplicateEvent = () => {
+		if (hasLoadedEvent.value == false) return
 		const newEventId = EventManager.duplicateEvent(eventId.value)
 		if (newEventId <= 0) {
 			uni.showToast({
@@ -271,22 +259,64 @@
 	}
 
 	const startPomodoro = () => {
+		if (hasLoadedEvent.value == false) return
 		uni.navigateTo({
 			url: `/pages/pomodoro/index?eventId=${eventId.value}&autoStart=1`
 		})
 	}
 
-	// 加载事件数据
-	const loadEventData = () => {
-		event.value = EventManager.getEventById(eventId.value)
-		labels.value = LabelManager.getSortedLabels()
-		historyRecords.value = EventManager.getEventHistory(eventId.value)
+	const resetEventView = () => {
+		currentEvent.value = null
+		hasLoadedEvent.value = false
+		eventName.value = ''
+		eventLabelIdList.value = ''
+		eventIntervalDays.value = 0
+		eventRepeatUnit.value = 'day'
+		eventNextDueDate.value = 0
+		eventRemark.value = ''
+		eventCreateTime.value = 0
+		eventIsTerminated.value = false
+		eventNotifyEnabled.value = false
+		eventNotifyTime.value = '09:00'
 	}
 
-	// 标记完成
+	const applyEventView = (event: Event) => {
+		currentEvent.value = event
+		hasLoadedEvent.value = true
+		eventName.value = event.name
+		eventLabelIdList.value = event.labelIdList
+		eventIntervalDays.value = event.intervalDays
+		eventRepeatUnit.value = event.repeatUnit
+		eventNextDueDate.value = event.nextDueDate
+		eventRemark.value = event.remark
+		eventCreateTime.value = event.createTime
+		eventIsTerminated.value = event.isTerminated
+		eventNotifyEnabled.value = event.notifyEnabled
+		eventNotifyTime.value = event.notifyTime
+	}
+
+	const loadEventData = () => {
+		if (eventId.value <= 0) return
+		try {
+			const loadedEvent = EventManager.getEventById(eventId.value)
+			if (loadedEvent == null) {
+				resetEventView()
+			} else {
+				applyEventView(loadedEvent)
+			}
+			labels.value = LabelManager.getSortedLabels('event')
+			historyRecords.value = EventManager.getEventHistory(eventId.value)
+		} catch (error) {
+			resetEventView()
+			labels.value = []
+			historyRecords.value = []
+		}
+	}
+
 	const markComplete = () => {
-		if (event.value == null) return
-		if (event.value.nextDueDate > 0) {
+		const event = getCurrentEvent()
+		if (event == null) return
+		if (event.nextDueDate > 0) {
 			uni.navigateTo({
 				url: `/pages/event/complete?id=${eventId.value}`
 			})
@@ -302,7 +332,7 @@
 			return
 		}
 
-		if (event.value.intervalDays < 0) {
+		if (event.intervalDays < 0) {
 			EventManager.terminateEvent(eventId.value)
 		}
 		uni.showToast({
@@ -312,7 +342,6 @@
 		loadEventData()
 	}
 
-	// 页面加载时获取数据
 	onLoad((options: UTSJSONObject) => {
 		const id = getOptionString(options, 'id')
 		if (id.length > 0) {
@@ -329,9 +358,10 @@
 		}
 	})
 
-	// 页面显示时刷新数据
 	onShow(() => {
-		loadEventData()
+		if (eventId.value > 0) {
+			loadEventData()
+		}
 	})
 </script>
 
@@ -430,40 +460,86 @@
 		justify-content: space-between;
 	}
 
+	.focus-card {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		background: linear-gradient(135deg, #24323a, #5d7fa3);
+		border-radius: 18px;
+		padding: 14px;
+		margin-bottom: 14px;
+		box-shadow: 0 12px 24px rgba(93, 127, 163, 0.18);
+	}
+
+	.focus-title {
+		font-size: 15px;
+		font-weight: bold;
+		color: #fff9f2;
+		margin-bottom: 5px;
+	}
+
+	.focus-desc {
+		font-size: 12px;
+		color: #d8e6e3;
+		line-height: 1.4;
+	}
+
+	.focus-action {
+		font-size: 12px;
+		font-weight: 600;
+		color: #fff9f2;
+		background-color: rgba(255, 255, 255, 0.16);
+		border-radius: 999px;
+		padding: 8px 10px;
+		margin-left: 12px;
+	}
+
 	.action-btn {
 		flex: 1;
 		height: 40px;
-		line-height: 40px;
 		border-radius: 20px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.action-btn-text {
 		font-size: 14px;
+		line-height: 40px;
 	}
 
 	.edit-btn {
 		background-color: #fffdf9;
-		border: 1px solid #e7ddd2;
-		color: #4d5b67;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #e7ddd2;
 		margin-right: 8px;
+	}
+
+	.edit-btn-text,
+	.duplicate-btn-text {
+		color: #4d5b67;
 	}
 
 	.duplicate-btn {
 		background-color: #f2ebe2;
-		color: #4d5b67;
-		margin-left: 4px;
-		margin-right: 4px;
-	}
-
-	.start-btn {
-		background-color: #5d7fa3;
-		color: #fff;
 		margin-left: 4px;
 		margin-right: 4px;
 	}
 
 	.complete-btn {
 		background-color: #1f7a72;
-		color: #fff;
 		margin-left: 8px;
 		box-shadow: 0 12px 22px rgba(31, 122, 114, 0.18);
+	}
+
+	.complete-btn-text {
+		color: #fff;
+	}
+
+	.empty-title {
+		font-size: 16px;
+		color: #72808d;
+		text-align: center;
 	}
 
 	/* 历史记录区域 */

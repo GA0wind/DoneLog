@@ -1,19 +1,35 @@
 import Context from 'android.content.Context'
 import SharedPreferences from 'android.content.SharedPreferences'
 import Intent from 'android.content.Intent'
+import BroadcastReceiver from 'android.content.BroadcastReceiver'
 import Activity from 'android.app.Activity'
+import AlarmManager from 'android.app.AlarmManager'
+import Notification from 'android.app.Notification'
+import NotificationChannel from 'android.app.NotificationChannel'
+import NotificationManager from 'android.app.NotificationManager'
 import Bundle from 'android.os.Bundle'
+import Build from 'android.os.Build'
+import Manifest from 'android.Manifest'
+import PackageManager from 'android.content.pm.PackageManager'
 import PendingIntent from 'android.app.PendingIntent'
 import AppWidgetManager from 'android.appwidget.AppWidgetManager'
 import AppWidgetProvider from 'android.appwidget.AppWidgetProvider'
 import ComponentName from 'android.content.ComponentName'
 import RemoteViews from 'android.widget.RemoteViews'
 import View from 'android.view.View'
+import ActivityCompat from 'androidx.core.app.ActivityCompat'
 
 const PREF_NAME = 'donelog_widget_pref'
 const SNAPSHOT_KEY = 'snapshot'
 const PENDING_ACTION_KEY = 'pending_action'
+const NOTIFICATION_SCHEDULES_KEY = 'notification_schedules'
 const WIDGET_PROVIDER_CLASS = 'uts.sdk.modules.donelogWidget.DoneLogWidgetProvider'
+const NOTIFICATION_RECEIVER_CLASS = 'uts.sdk.modules.donelogWidget.EventNotificationReceiver'
+const NOTIFICATION_CHANNEL_ID = 'donelog_event_reminders'
+const NOTIFICATION_CHANNEL_NAME = '事件提醒'
+const NOTIFICATION_PERMISSION_REQUEST_CODE: Int = 2601
+const NOTIFICATION_REQUEST_CODE_BASE: Int = 32000
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 type WidgetItem = {
 	id: number
@@ -34,8 +50,25 @@ type WidgetPayload = {
 	overview: WidgetOverview
 }
 
+type NotificationSchedule = {
+	id: number
+	name: string
+	notifyTime: string
+	nextNotifyAt: number
+}
+
 function getPrefs(context: Context) {
 	return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+}
+
+function getAvailableContext(): Context | null {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity != null) {
+		return activity.getApplicationContext()
+	}
+
+	const context = UTSAndroid.getAppContext()
+	return context != null ? context as Context : null
 }
 
 function getLayoutId(context: Context): Int {
@@ -91,6 +124,7 @@ function buildActionIntent(context: Context, eventId: Int): PendingIntent {
 	const intent = new Intent()
 	intent.setClassName(context, 'uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity')
 	intent.putExtra('eventId', eventId)
+	intent.putExtra('actionType', 'open-complete')
 	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 	return PendingIntent.getActivity(
 		context,
@@ -98,6 +132,151 @@ function buildActionIntent(context: Context, eventId: Int): PendingIntent {
 		intent,
 		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
 	)
+}
+
+function buildNotificationContentIntent(context: Context, eventId: Int): PendingIntent {
+	const intent = new Intent()
+	intent.setClassName(context, 'uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity')
+	intent.putExtra('eventId', eventId)
+	intent.putExtra('actionType', 'open-detail')
+	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+	return PendingIntent.getActivity(
+		context,
+		(NOTIFICATION_REQUEST_CODE_BASE + eventId).toInt(),
+		intent,
+		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+	)
+}
+
+function buildAlarmIntent(context: Context, eventId: Int): PendingIntent {
+	const intent = new Intent()
+	intent.setClassName(context, NOTIFICATION_RECEIVER_CLASS)
+	intent.putExtra('eventId', eventId)
+	return PendingIntent.getBroadcast(
+		context,
+		(NOTIFICATION_REQUEST_CODE_BASE + eventId).toInt(),
+		intent,
+		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+	)
+}
+
+function parseSchedules(payload: string): NotificationSchedule[] {
+	if (payload.length === 0) {
+		return []
+	}
+
+	try {
+		const parsed = JSON.parseArray<NotificationSchedule>(payload)
+		return parsed != null ? parsed : []
+	} catch (e) {
+		return []
+	}
+}
+
+function getStoredSchedules(context: Context): NotificationSchedule[] {
+	const stored = getPrefs(context).getString(NOTIFICATION_SCHEDULES_KEY, '')
+	return parseSchedules(stored == null ? '' : stored)
+}
+
+function saveStoredSchedules(context: Context, schedules: NotificationSchedule[]): void {
+	getPrefs(context).edit().putString(NOTIFICATION_SCHEDULES_KEY, JSON.stringify(schedules)).apply()
+}
+
+function hasNotificationPermission(context: Context): boolean {
+	if (Build.VERSION.SDK_INT < 33) {
+		return true
+	}
+	return ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) === PackageManager.PERMISSION_GRANTED
+}
+
+function createReminderChannel(context: Context): void {
+	if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+		return
+	}
+
+	const notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+	const channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
+	notificationManager.createNotificationChannel(channel)
+}
+
+function showEventNotification(context: Context, schedule: NotificationSchedule): void {
+	if (!hasNotificationPermission(context)) {
+		return
+	}
+
+	createReminderChannel(context)
+	const builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+		? new Notification.Builder(context, NOTIFICATION_CHANNEL_ID)
+		: new Notification.Builder(context)
+
+	builder.setSmallIcon(context.getApplicationInfo().icon)
+	builder.setContentTitle('做完记 事件提醒')
+	builder.setContentText(`该完成：${schedule.name}`)
+	builder.setAutoCancel(true)
+	builder.setContentIntent(buildNotificationContentIntent(context, schedule.id.toInt()))
+
+	const notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+	notificationManager.notify((NOTIFICATION_REQUEST_CODE_BASE + schedule.id.toInt()).toInt(), builder.build())
+}
+
+function getNextDailyNotifyAt(notifyTime: string): number {
+	const parts = notifyTime.split(':')
+	const hour = parts.length > 0 ? parseInt(parts[0]) : 9
+	const minute = parts.length > 1 ? parseInt(parts[1]) : 0
+	const nowDate = new Date()
+	let next = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), hour, minute).getTime()
+	if (next <= Date.now()) {
+		next += ONE_DAY_MS
+	}
+	return next
+}
+
+function updateScheduleAfterFire(context: Context, schedule: NotificationSchedule): void {
+	const schedules = getStoredSchedules(context)
+	const index = schedules.findIndex(item => item.id === schedule.id)
+	if (index < 0) {
+		return
+	}
+
+	schedules[index].nextNotifyAt = getNextDailyNotifyAt(schedule.notifyTime)
+	saveStoredSchedules(context, schedules)
+	scheduleAlarm(context, schedules[index])
+}
+
+function scheduleAlarm(context: Context, schedule: NotificationSchedule): void {
+	const alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+	const pendingIntent = buildAlarmIntent(context, schedule.id.toInt())
+	const triggerAt = schedule.nextNotifyAt.toLong()
+
+	try {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms() == false) {
+			alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			return
+		}
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+			alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			return
+		}
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			return
+		}
+		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+	} catch (e) {
+		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+	}
+}
+
+function cancelScheduleAlarm(context: Context, eventId: number): void {
+	const alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+	alarmManager.cancel(buildAlarmIntent(context, eventId.toInt()))
+}
+
+function scheduleStoredNotifications(context: Context): void {
+	const schedules = getStoredSchedules(context)
+	for (let i = 0; i < schedules.length; i++) {
+		scheduleAlarm(context, schedules[i])
+	}
 }
 
 function applyRow(context: Context, views: RemoteViews, index: Int, item: WidgetItem | null): void {
@@ -182,6 +361,48 @@ export function refreshWidget(): void {
 	updateWidgetViews(activity.getApplicationContext())
 }
 
+export function requestEventNotificationPermission(): void {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null || Build.VERSION.SDK_INT < 33) {
+		return
+	}
+	if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) === PackageManager.PERMISSION_GRANTED) {
+		return
+	}
+	ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+}
+
+export function scheduleEventNotifications(payload: string): void {
+	const context = getAvailableContext()
+	if (context == null) {
+		return
+	}
+
+	const oldSchedules = getStoredSchedules(context)
+	for (let i = 0; i < oldSchedules.length; i++) {
+		cancelScheduleAlarm(context, oldSchedules[i].id)
+	}
+
+	const schedules = parseSchedules(payload)
+	saveStoredSchedules(context, schedules)
+	for (let i = 0; i < schedules.length; i++) {
+		scheduleAlarm(context, schedules[i])
+	}
+}
+
+export function cancelEventNotifications(): void {
+	const context = getAvailableContext()
+	if (context == null) {
+		return
+	}
+
+	const oldSchedules = getStoredSchedules(context)
+	for (let i = 0; i < oldSchedules.length; i++) {
+		cancelScheduleAlarm(context, oldSchedules[i].id)
+	}
+	getPrefs(context).edit().remove(NOTIFICATION_SCHEDULES_KEY).apply()
+}
+
 export class DoneLogWidgetProvider extends AppWidgetProvider {
 	override onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray): void {
 		super.onUpdate(context, appWidgetManager, appWidgetIds)
@@ -194,9 +415,10 @@ export class WidgetActionBridgeActivity extends Activity {
 		super.onCreate(savedInstanceState)
 
 		const eventId = this.getIntent().getIntExtra('eventId', 0)
+		const actionType = this.getIntent().getStringExtra('actionType')
 		if (eventId > 0) {
 			const payload = JSON.stringify({
-				type: 'open-complete',
+				type: actionType == null || actionType.length === 0 ? 'open-complete' : actionType,
 				eventId
 			})
 			getPrefs(this.getApplicationContext()).edit().putString(PENDING_ACTION_KEY, payload).apply()
@@ -209,5 +431,29 @@ export class WidgetActionBridgeActivity extends Activity {
 		}
 
 		this.finish()
+	}
+}
+
+export class EventNotificationReceiver extends BroadcastReceiver {
+	override onReceive(context: Context, intent: Intent): void {
+		const action = intent.getAction()
+		if (action === Intent.ACTION_BOOT_COMPLETED) {
+			scheduleStoredNotifications(context)
+			return
+		}
+
+		const eventId = intent.getIntExtra('eventId', 0)
+		if (eventId <= 0) {
+			return
+		}
+
+		const schedules = getStoredSchedules(context)
+		const schedule = schedules.find(item => item.id === eventId)
+		if (schedule == null) {
+			return
+		}
+
+		showEventNotification(context, schedule)
+		updateScheduleAfterFire(context, schedule)
 	}
 }

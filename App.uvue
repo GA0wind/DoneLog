@@ -39,6 +39,16 @@
 
 			const actionType = action.type
 			const actionEventId = action.eventId
+			if (actionType === 'open-detail' && actionEventId > 0) {
+				const event = EventManager.getEventById(actionEventId)
+				if (event == null) {
+					return
+				}
+				uni.navigateTo({
+					url: `/pages/event/detail?id=${actionEventId}`
+				})
+				return
+			}
 			if (actionType === 'open-complete' && actionEventId > 0) {
 				const event = EventManager.getEventById(actionEventId)
 				if (event == null) {
@@ -74,11 +84,14 @@
 		EventManager.initIds()
 		LabelManager.initIds()
 		AccountManager.initIds()
+		EventManager.syncEventNotifications()
 		saveTodayWidgetSnapshot()
 	})
 
 	onAppShow(() => {
 		console.log('App Show')
+		AccountManager.processDueAutoRenewals()
+		EventManager.syncEventNotifications()
 		saveTodayWidgetSnapshot()
 		handlePendingWidgetAction()
 	})

@@ -1,70 +1,26 @@
 <template>
 	<scroll-view direction="vertical" style="flex: 1" class="container">
 		<view class="summary-card">
-			<view class="summary-item">
+			<view class="summary-item" @click="goToExpenseChart">
 				<text class="summary-value">¥{{monthOverview.expense.toFixed(2)}}</text>
-				<text class="summary-label">本月支出</text>
+				<text class="summary-label">本月支出 · 看分类</text>
 			</view>
-			<view class="summary-item">
+			<view class="summary-item" @click="goToIncomeChart">
 				<text class="summary-value">¥{{monthOverview.income.toFixed(2)}}</text>
-				<text class="summary-label">本月收入</text>
+				<text class="summary-label">本月收入 · 看分类</text>
 			</view>
 			<view class="summary-item">
-				<text class="summary-value">{{entries.length}}</text>
-				<text class="summary-label">记录总数</text>
+				<text class="summary-value">{{budgetRemainingText}}</text>
+				<text class="summary-label">本月剩余预算</text>
 			</view>
 		</view>
 
-		<view class="budget-card">
-			<view class="budget-header">
-				<view>
-					<text class="budget-title">本月预算</text>
-					<text class="budget-desc">{{monthlyBudget > 0 ? budgetStatusText : '设置后会自动跟踪本月支出'}}</text>
-				</view>
-				<button class="budget-action" @click="openBudgetModal">{{monthlyBudget > 0 ? '调整' : '设置'}}</button>
+		<view class="settings-strip" @click="goToSettings">
+			<view>
+				<text class="settings-title">记账设置</text>
+				<text class="settings-desc">支付方式、预算、标签预算、自动续费</text>
 			</view>
-			<view v-if="monthlyBudget > 0">
-				<view class="budget-numbers">
-					<text class="budget-used">已用 ¥{{monthOverview.expense.toFixed(2)}}</text>
-					<text class="budget-total">预算 ¥{{monthlyBudget.toFixed(2)}}</text>
-				</view>
-				<view class="budget-bar">
-					<view class="budget-progress" :class="{ over: budgetRemaining < 0 }" :style="{ width: budgetUsedPercent + '%' }"></view>
-				</view>
-			</view>
-			<view class="label-budget-section">
-				<view class="label-budget-header">
-					<view>
-						<text class="label-budget-title">标签预算</text>
-						<text class="label-budget-desc">按餐饮、交通等标签拆分本月支出</text>
-					</view>
-					<button class="label-budget-action" @click="openLabelBudgetModal(0)">设置</button>
-				</view>
-				<view v-if="visibleLabelBudgetOverviews.length > 0">
-					<view
-						class="label-budget-item"
-						v-for="item in visibleLabelBudgetOverviews"
-						:key="item.labelId"
-						@click="openLabelBudgetModal(item.labelId)"
-					>
-						<view class="label-budget-top">
-							<view class="label-budget-name-wrap">
-								<view class="label-budget-dot" :style="{ backgroundColor: getLabelColor(item.labelId) }"></view>
-								<text class="label-budget-name">{{getLabelName(item.labelId)}}</text>
-							</view>
-							<text class="label-budget-status" :class="{ over: item.isOverBudget }">{{getLabelBudgetStatus(item)}}</text>
-						</view>
-						<view class="budget-bar slim">
-							<view class="budget-progress slim-progress" :class="{ over: item.isOverBudget }" :style="{ width: item.usedPercent + '%' }"></view>
-						</view>
-						<view class="label-budget-meta">
-							<text class="label-budget-meta-text">已用 ¥{{item.usedAmount.toFixed(2)}}</text>
-							<text class="label-budget-meta-text">预算 ¥{{item.monthlyBudget.toFixed(2)}}</text>
-						</view>
-					</view>
-				</view>
-				<text class="label-budget-empty" v-if="visibleLabelBudgetOverviews.length === 0">还没有设置标签预算。</text>
-			</view>
+			<text class="settings-arrow">›</text>
 		</view>
 
 		<view class="list-card">
@@ -75,7 +31,7 @@
 					</view>
 					<view class="entry-info">
 						<text class="entry-desc">{{getEntryDisplayDesc(entry)}}</text>
-						<text class="entry-meta">{{getEntryLabelNames(entry)}} · {{formatDate(entry.occurredAt)}}</text>
+						<text class="entry-meta">{{getEntryLabelNames(entry)}} · {{getPaymentMethodName(entry.paymentMethodId)}} · {{formatDate(entry.occurredAt)}}</text>
 					</view>
 				</view>
 				<view class="entry-right">
@@ -95,51 +51,62 @@
 		<view class="modal" v-if="showModal && !showLabelSelector && !showAddLabelModal" @click="hideModal">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">{{editingId > 0 ? '编辑记账' : '新增记账'}}</text>
-				<view class="form-item">
-					<text class="label">收支类型</text>
-					<radio-group class="type-group" @change="onTypeChange">
-						<label class="radio-chip first-radio-chip" :class="{ active: formType === 'expense' }">
-							<radio value="expense" :checked="formType === 'expense'" color="#E07A5F" />
-							<text>支出</text>
-						</label>
-						<label class="radio-chip" :class="{ active: formType === 'income' }">
-							<radio value="income" :checked="formType === 'income'" color="#1F7A72" />
-							<text>收入</text>
-						</label>
-					</radio-group>
-				</view>
-
-				<view class="form-item">
-					<text class="label">金额</text>
-					<input class="input" type="digit" v-model="formAmount" placeholder="请输入金额" />
-				</view>
-
-				<view class="form-item">
-					<text class="label">标签</text>
-					<view class="label-row">
-						<view class="tag-selector" @click="showLabelSelector = true">
-							<view class="selected-tags">
-								<text class="tag" v-for="labelId in formLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
-									{{getLabelName(labelId)}}
-								</text>
-								<text class="placeholder" v-if="formLabelIds.length === 0">请选择标签</text>
-							</view>
-						</view>
-						<button class="mini-add-btn" @click.stop="openAddLabel">新增标签</button>
+				<scroll-view direction="vertical" class="account-form-body">
+					<view class="form-item">
+						<text class="label">收支类型</text>
+						<radio-group class="type-group" @change="onTypeChange">
+							<label class="radio-chip first-radio-chip" :class="{ active: formType === 'expense' }">
+								<radio value="expense" :checked="formType === 'expense'" color="#E07A5F" />
+								<text>支出</text>
+							</label>
+							<label class="radio-chip" :class="{ active: formType === 'income' }">
+								<radio value="income" :checked="formType === 'income'" color="#1F7A72" />
+								<text>收入</text>
+							</label>
+						</radio-group>
 					</view>
-				</view>
 
-				<view class="form-item">
-					<text class="label">记账日期</text>
-					<picker mode="date" :value="formDate" @change="onDateChange">
-						<view class="picker"><text>{{formDate}}</text></view>
-					</picker>
-				</view>
+					<view class="form-item">
+						<text class="label">金额</text>
+						<input class="input" type="digit" v-model="formAmount" placeholder="请输入金额" />
+					</view>
 
-				<view class="form-item">
-					<text class="label">描述</text>
-					<textarea class="textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资、报销" />
-				</view>
+					<view class="form-item">
+						<text class="label">标签</text>
+						<view class="label-row">
+							<view class="tag-selector" @click="showLabelSelector = true">
+								<view class="selected-tags">
+									<text class="tag" v-for="labelId in formLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
+										{{getLabelName(labelId)}}
+									</text>
+									<text class="placeholder" v-if="formLabelIds.length === 0">请选择标签</text>
+								</view>
+							</view>
+							<button class="mini-add-btn" @click.stop="openAddLabel">新增标签</button>
+						</view>
+					</view>
+
+					<view class="form-item">
+						<text class="label">支付方式</text>
+						<picker mode="selector" :range="paymentMethodNames" :value="selectedPaymentMethodIndex" @change="onPaymentMethodChange">
+							<view class="picker"><text>{{selectedPaymentMethodName}}</text></view>
+						</picker>
+					</view>
+
+					<view class="form-item">
+						<text class="label">记账日期</text>
+						<picker mode="date" :value="formDate" @change="onDateChange">
+							<view class="picker"><text>{{formDate}}</text></view>
+						</picker>
+					</view>
+
+					<view class="form-item last-form-item">
+						<text class="label">描述</text>
+						<view class="textarea-shell">
+							<textarea class="textarea entry-remark-textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资、报销" />
+						</view>
+					</view>
+				</scroll-view>
 
 				<view class="modal-footer">
 					<button class="cancel-btn" @click="hideModal">取消</button>
@@ -196,6 +163,69 @@
 			</view>
 		</view>
 
+		<view class="modal" v-if="showRenewalModal && !showRenewalLabelSelector" @click="hideRenewalModal">
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">{{editingRenewalId > 0 ? '编辑自动续费' : '新增自动续费'}}</text>
+				<view class="form-item">
+					<text class="label">名称</text>
+					<input class="input" v-model="renewalName" placeholder="例如：视频会员、云存储" />
+				</view>
+				<view class="form-item">
+					<text class="label">扣款金额</text>
+					<input class="input" type="digit" v-model="renewalAmount" placeholder="请输入金额" />
+				</view>
+				<view class="form-item">
+					<text class="label">支付方式</text>
+					<picker mode="selector" :range="paymentMethodNames" :value="selectedRenewalPaymentMethodIndex" @change="onRenewalPaymentMethodChange">
+						<view class="picker"><text>{{selectedRenewalPaymentMethodName}}</text></view>
+					</picker>
+				</view>
+				<view class="form-item">
+					<text class="label">下次扣款日期</text>
+					<picker mode="date" :value="renewalDate" @change="onRenewalDateChange">
+						<view class="picker"><text>{{renewalDate}}</text></view>
+					</picker>
+				</view>
+				<view class="form-item">
+					<text class="label">标签</text>
+					<view class="tag-selector wide" @click="showRenewalLabelSelector = true">
+						<view class="selected-tags">
+							<text class="tag" v-for="labelId in renewalLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
+								{{getLabelName(labelId)}}
+							</text>
+							<text class="placeholder" v-if="renewalLabelIds.length === 0">请选择标签</text>
+						</view>
+					</view>
+				</view>
+				<view class="form-item">
+					<text class="label">备注</text>
+					<textarea class="textarea small-textarea" v-model="renewalRemark" placeholder="可选" />
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideRenewalModal">取消</button>
+					<button class="confirm-btn" @click.stop="saveRenewal">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalLabelSelector" @click="showRenewalLabelSelector = false">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">选择自动续费标签</text>
+				<scroll-view direction="vertical" class="selector-body">
+					<view class="selector-item" :class="{ selected: renewalLabelIds.includes(label.id) }" v-for="label in labels" :key="label.id" @click="toggleRenewalLabel(label.id)">
+						<view class="selector-left">
+							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>
+							<text class="selector-name">{{label.name}}</text>
+						</view>
+						<text class="selector-check" :class="{ visible: renewalLabelIds.includes(label.id) }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer">
+					<button class="confirm-btn" @click="showRenewalLabelSelector = false">确定</button>
+				</view>
+			</view>
+		</view>
+
 		<view class="modal" v-if="showBudgetModal" @click="hideBudgetModal">
 			<view class="modal-content selector-modal-content" @click.stop>
 				<text class="modal-title">设置月预算</text>
@@ -237,10 +267,12 @@
 <script setup lang="uts">
 	import { AccountManager, LabelBudgetOverview, AccountOverview } from '@/utils/accountManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { AccountEntry, AccountEntryInput, Label } from '@/utils/storage.uts'
+	import { AccountEntry, AccountEntryInput, AutoRenewal, Label, PaymentMethod } from '@/utils/storage.uts'
 
 	const entries = ref<AccountEntry[]>([])
 	const labels = ref<Label[]>([])
+	const paymentMethods = ref<PaymentMethod[]>([])
+	const autoRenewals = ref<AutoRenewal[]>([])
 	const monthOverview = ref<AccountOverview>({ income: 0, expense: 0, count: 0 })
 	const monthlyBudget = ref(0)
 	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
@@ -250,12 +282,22 @@
 	const showLabelSelector = ref(false)
 	const showBudgetModal = ref(false)
 	const showLabelBudgetModal = ref(false)
+	const showRenewalModal = ref(false)
+	const showRenewalLabelSelector = ref(false)
 	const editingId = ref(0)
 	const formType = ref<'expense' | 'income'>('expense')
 	const formAmount = ref('')
 	const formLabelIds = ref<number[]>([])
+	const formPaymentMethodId = ref(1)
 	const formDate = ref('')
 	const formRemark = ref('')
+	const editingRenewalId = ref(0)
+	const renewalName = ref('')
+	const renewalAmount = ref('')
+	const renewalPaymentMethodId = ref(1)
+	const renewalDate = ref('')
+	const renewalLabelIds = ref<number[]>([])
+	const renewalRemark = ref('')
 	const newLabelName = ref('')
 	const newLabelError = ref('')
 	const newLabelColor = ref('#1F7A72')
@@ -303,10 +345,11 @@
 
 	const parseLabelIds = (labelIdList: string): number[] => {
 		if (labelIdList.length === 0) return []
+		const validLabelIds = labels.value.map(label => label.id)
 		return labelIdList
 			.split(',')
 			.map(id => parseInt(id))
-			.filter(id => !Number.isNaN(id))
+			.filter(id => !Number.isNaN(id) && validLabelIds.includes(id))
 	}
 
 	const getLabelName = (labelId: number): string => {
@@ -334,6 +377,10 @@
 		return names.length > 0 ? names.join(' / ') : '未分类'
 	}
 
+	const getPaymentMethodName = (paymentMethodId: number): string => {
+		return AccountManager.getPaymentMethodName(paymentMethodId)
+	}
+
 	const getEntryDisplayDesc = (entry: AccountEntry): string => {
 		if (entry.remark.trim().length > 0) {
 			return entry.remark
@@ -344,8 +391,11 @@
 
 	const loadData = () => {
 		LabelManager.initIds()
+		AccountManager.processDueAutoRenewals()
 		entries.value = AccountManager.getSortedEntries()
 		labels.value = LabelManager.getSortedLabels('account')
+		paymentMethods.value = AccountManager.getPaymentMethods()
+		autoRenewals.value = AccountManager.getAutoRenewals()
 		monthOverview.value = AccountManager.getOverview('month')
 		monthlyBudget.value = AccountManager.getBudgetSettings().monthlyExpenseBudget
 		labelBudgetOverviews.value = AccountManager.getMonthlyLabelBudgetOverviews()
@@ -360,6 +410,11 @@
 		if (monthlyBudget.value <= 0) return '还没有设置预算'
 		if (budgetRemaining.value < 0) return `已超出 ¥${Math.abs(budgetRemaining.value).toFixed(2)}`
 		return `还可用 ¥${budgetRemaining.value.toFixed(2)}`
+	})
+	const budgetRemainingText = computed(() => {
+		if (monthlyBudget.value <= 0) return '未设置'
+		if (budgetRemaining.value < 0) return `-¥${Math.abs(budgetRemaining.value).toFixed(2)}`
+		return `¥${budgetRemaining.value.toFixed(2)}`
 	})
 
 	const visibleLabelBudgetOverviews = computed<LabelBudgetOverview[]>(() => {
@@ -378,11 +433,36 @@
 		return index >= 0 ? index : 0
 	})
 
+	const paymentMethodNames = computed<string[]>(() => {
+		return paymentMethods.value.map(method => method.name)
+	})
+
+	const selectedPaymentMethodIndex = computed(() => {
+		const index = paymentMethods.value.findIndex(method => method.id === formPaymentMethodId.value)
+		return index >= 0 ? index : 0
+	})
+
+	const selectedPaymentMethodName = computed(() => {
+		const method = paymentMethods.value.find(item => item.id === formPaymentMethodId.value)
+		return method != null ? method.name : '请选择支付方式'
+	})
+
+	const selectedRenewalPaymentMethodIndex = computed(() => {
+		const index = paymentMethods.value.findIndex(method => method.id === renewalPaymentMethodId.value)
+		return index >= 0 ? index : 0
+	})
+
+	const selectedRenewalPaymentMethodName = computed(() => {
+		const method = paymentMethods.value.find(item => item.id === renewalPaymentMethodId.value)
+		return method != null ? method.name : '请选择支付方式'
+	})
+
 	const resetForm = () => {
 		editingId.value = 0
 		formType.value = 'expense'
 		formAmount.value = ''
 		formLabelIds.value = []
+		formPaymentMethodId.value = AccountManager.getDefaultPaymentMethodId()
 		formDate.value = formatDate(Date.now())
 		formRemark.value = ''
 	}
@@ -399,9 +479,28 @@
 		formType.value = entry.type
 		formAmount.value = `${entry.amount}`
 		formLabelIds.value = parseLabelIds(entry.labelIdList)
+		formPaymentMethodId.value = entry.paymentMethodId
 		formDate.value = formatDate(entry.occurredAt)
 		formRemark.value = entry.remark
 		showModal.value = true
+	}
+
+	const goToSettings = () => {
+		uni.navigateTo({
+			url: '/pages/account/settings'
+		})
+	}
+
+	const goToExpenseChart = () => {
+		uni.navigateTo({
+			url: '/pages/my/account-chart?period=month&type=expense'
+		})
+	}
+
+	const goToIncomeChart = () => {
+		uni.navigateTo({
+			url: '/pages/my/account-chart?period=month&type=income'
+		})
 	}
 
 	const hideModal = () => {
@@ -552,13 +651,127 @@
 		formDate.value = getDetailStringValue(e)
 	}
 
+	const onPaymentMethodChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e)
+		if (index < 0 || index >= paymentMethods.value.length) return
+		formPaymentMethodId.value = paymentMethods.value[index].id
+	}
+
+	const onRenewalPaymentMethodChange = (e: UTSJSONObject) => {
+		const index = getDetailNumberValue(e)
+		if (index < 0 || index >= paymentMethods.value.length) return
+		renewalPaymentMethodId.value = paymentMethods.value[index].id
+	}
+
+	const onRenewalDateChange = (e: UTSJSONObject) => {
+		renewalDate.value = getDetailStringValue(e)
+	}
+
 	const toggleFormLabel = (labelId: number) => {
-		const index = formLabelIds.value.indexOf(labelId)
-		if (index > -1) {
-			formLabelIds.value.splice(index, 1)
-		} else {
-			formLabelIds.value.push(labelId)
+		formLabelIds.value = formLabelIds.value.includes(labelId) ? [] : [labelId]
+	}
+
+	const toggleRenewalLabel = (labelId: number) => {
+		renewalLabelIds.value = renewalLabelIds.value.includes(labelId) ? [] : [labelId]
+	}
+
+	const resetRenewalForm = () => {
+		editingRenewalId.value = 0
+		renewalName.value = ''
+		renewalAmount.value = ''
+		renewalPaymentMethodId.value = AccountManager.getDefaultPaymentMethodId()
+		renewalDate.value = formatDate(Date.now())
+		renewalLabelIds.value = []
+		renewalRemark.value = ''
+	}
+
+	const openRenewalModal = (renewal: AutoRenewal | null) => {
+		if (paymentMethods.value.length === 0) {
+			paymentMethods.value = AccountManager.getPaymentMethods()
 		}
+		showRenewalLabelSelector.value = false
+		if (renewal == null) {
+			resetRenewalForm()
+		} else {
+			editingRenewalId.value = renewal.id
+			renewalName.value = renewal.name
+			renewalAmount.value = `${renewal.amount}`
+			renewalPaymentMethodId.value = renewal.paymentMethodId
+			renewalDate.value = formatDate(renewal.nextChargeDate)
+			renewalLabelIds.value = parseLabelIds(renewal.labelIdList)
+			renewalRemark.value = renewal.remark
+		}
+		showRenewalModal.value = true
+	}
+
+	const hideRenewalModal = () => {
+		showRenewalModal.value = false
+		showRenewalLabelSelector.value = false
+	}
+
+	const saveRenewal = () => {
+		const amount = parseFloat(renewalAmount.value)
+		if (renewalName.value.trim().length === 0) {
+			uni.showToast({ title: '请输入名称', icon: 'none' })
+			return
+		}
+		if (Number.isNaN(amount) || amount <= 0) {
+			uni.showToast({ title: '请输入正确金额', icon: 'none' })
+			return
+		}
+
+		let success = false
+		if (editingRenewalId.value > 0) {
+			const current = autoRenewals.value.find(item => item.id === editingRenewalId.value)
+			if (current == null) return
+			success = AccountManager.updateAutoRenewal({
+				...current,
+				name: renewalName.value.trim(),
+				amount,
+				paymentMethodId: renewalPaymentMethodId.value,
+				labelIdList: renewalLabelIds.value.join(','),
+				nextChargeDate: new Date(renewalDate.value).getTime(),
+				remark: renewalRemark.value.trim()
+			})
+		} else {
+			success = AccountManager.addAutoRenewal({
+				name: renewalName.value.trim(),
+				amount,
+				paymentMethodId: renewalPaymentMethodId.value,
+				labelIdList: renewalLabelIds.value.join(','),
+				nextChargeDate: new Date(renewalDate.value).getTime(),
+				isEnabled: true,
+				remark: renewalRemark.value.trim()
+			})
+		}
+
+		if (success == true) {
+			hideRenewalModal()
+			loadData()
+			uni.showToast({ title: '保存成功', icon: 'success' })
+		}
+	}
+
+	const toggleRenewal = (renewal: AutoRenewal) => {
+		AccountManager.updateAutoRenewal({
+			...renewal,
+			isEnabled: renewal.isEnabled == false
+		})
+		loadData()
+	}
+
+	const deleteRenewal = (renewalId: number) => {
+		uni.showModal({
+			title: '确认删除',
+			content: '确定删除这个自动续费项目吗？已生成的账单不会删除。',
+			success: (res) => {
+				if (res.confirm == false) return
+				if (AccountManager.deleteAutoRenewal(renewalId)) {
+					loadData()
+					uni.showToast({ title: '删除成功', icon: 'success' })
+				}
+			}
+		})
 	}
 
 	const addAccountLabel = () => {
@@ -571,9 +784,7 @@
 
 		const existingLabel = LabelManager.getLabelByName(createdName, 'account')
 		if (existingLabel != null) {
-			if (formLabelIds.value.includes(existingLabel.id) == false) {
-				formLabelIds.value.push(existingLabel.id)
-			}
+			formLabelIds.value = [existingLabel.id]
 			newLabelError.value = '已存在同名标签，已为你选中'
 			uni.showToast({ title: '标签已存在，已选中', icon: 'none' })
 			return
@@ -588,9 +799,7 @@
 
 		labels.value = LabelManager.getSortedLabels('account')
 		const created = labels.value.find(item => item.name === createdName)
-		if (created != null && formLabelIds.value.includes(created.id) == false) {
-			formLabelIds.value.push(created.id)
-		}
+		if (created != null) formLabelIds.value = [created.id]
 		newLabelName.value = ''
 		newLabelError.value = ''
 		newLabelColor.value = '#1F7A72'
@@ -609,6 +818,8 @@
 			type: formType.value,
 			amount: amount,
 			labelIdList: formLabelIds.value.join(','),
+			paymentMethodId: formPaymentMethodId.value,
+			autoRenewalId: 0,
 			remark: formRemark.value,
 			occurredAt: new Date(formDate.value).getTime()
 		}
@@ -622,6 +833,8 @@
 				type: payload.type,
 				amount: payload.amount,
 				labelIdList: payload.labelIdList,
+				paymentMethodId: payload.paymentMethodId != null ? payload.paymentMethodId : AccountManager.getDefaultPaymentMethodId(),
+				autoRenewalId: current.autoRenewalId,
 				remark: payload.remark,
 				occurredAt: payload.occurredAt,
 				createTime: current.createTime,
@@ -670,6 +883,8 @@
 	}
 
 	.summary-card,
+	.renewal-card,
+	.settings-strip,
 	.list-card,
 	.modal-content {
 		background-color: #fffaf3;
@@ -715,6 +930,98 @@
 		border-style: solid;
 		border-color: #eadfd2;
 		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.05);
+	}
+
+	.renewal-card {
+		padding: 16px;
+		margin-bottom: 14px;
+	}
+
+	.settings-strip {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px;
+		margin-bottom: 14px;
+	}
+
+	.settings-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #24323a;
+		margin-bottom: 4px;
+	}
+
+	.settings-desc {
+		font-size: 12px;
+		color: #7b8791;
+	}
+
+	.settings-arrow {
+		font-size: 28px;
+		color: #1f7a72;
+		margin-left: 12px;
+	}
+
+	.renewal-item {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 0;
+		border-top-width: 1px;
+		border-top-style: solid;
+		border-top-color: #efe3d7;
+	}
+
+	.renewal-main {
+		flex: 1;
+		min-width: 0;
+		padding-right: 10px;
+	}
+
+	.renewal-name {
+		display: flex;
+		font-size: 15px;
+		font-weight: 600;
+		color: #24323a;
+		margin-bottom: 4px;
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.renewal-meta {
+		font-size: 12px;
+		color: #7b8791;
+		line-height: 1.4;
+	}
+
+	.renewal-right {
+		flex-direction: row;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.renewal-amount {
+		font-size: 14px;
+		font-weight: bold;
+		color: #c45d42;
+		margin-right: 8px;
+	}
+
+	.renewal-toggle {
+		width: 46px;
+		height: 32px;
+		line-height: 32px;
+		padding: 0;
+		border-radius: 16px;
+		font-size: 12px;
+		background-color: #1f7a72;
+		color: #fff;
+	}
+
+	.renewal-toggle.disabled {
+		background-color: #f2ebe2;
+		color: #7b8791;
 	}
 
 	.budget-header {
@@ -986,6 +1293,11 @@
 		font-size: 12px;
 	}
 
+	.delete-btn.compact {
+		margin-left: 8px;
+		padding: 0 10px;
+	}
+
 	.label-row {
 		flex-direction: row;
 		align-items: flex-start;
@@ -1001,6 +1313,10 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.tag-selector.wide {
+		margin-right: 0;
 	}
 
 	.selected-tags {
@@ -1072,15 +1388,21 @@
 	}
 
 	.modal-content {
-		width: 88%;
-		max-height: 640px;
-		padding: 18px;
+		width: 84%;
+		max-height: 560px;
+		padding: 16px;
 	}
 
 	.selector-modal-content {
-		width: 88%;
-		max-height: 620px;
-		padding: 18px;
+		width: 84%;
+		max-height: 560px;
+		padding: 16px;
+	}
+
+	.account-form-body {
+		height: 380px;
+		margin-bottom: 10px;
+		padding-right: 0;
 	}
 
 	.modal-title {
@@ -1093,6 +1415,10 @@
 
 	.form-item {
 		margin-bottom: 14px;
+	}
+
+	.last-form-item {
+		margin-bottom: 0;
 	}
 
 	.label {
@@ -1154,8 +1480,31 @@
 	}
 
 	.textarea {
-		min-height: 90px;
+		min-height: 74px;
 		padding-top: 10px;
+	}
+
+	.textarea-shell {
+		background-color: #fffdf9;
+		border-radius: 16px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+		padding: 10px 12px;
+		margin-right: 2px;
+	}
+
+	.entry-remark-textarea {
+		width: 100%;
+		height: 96px;
+		min-height: 96px;
+		padding: 0;
+		border-width: 0;
+		background-color: transparent;
+	}
+
+	.small-textarea {
+		min-height: 70px;
 	}
 
 	.color-options {

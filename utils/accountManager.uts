@@ -1,4 +1,14 @@
-import { StorageUtils, AccountEntry, AccountEntryInput, BudgetSettings, LabelBudgetSetting } from './storage.uts'
+import {
+  StorageUtils,
+  AccountEntry,
+  AccountEntryInput,
+  AutoRenewal,
+  AutoRenewalInput,
+  BudgetSettings,
+  LabelBudgetSetting,
+  PaymentMethod,
+  PaymentMethodInput
+} from './storage.uts'
 import { EventManager } from './eventManager.uts'
 import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
 
@@ -44,12 +54,24 @@ type PeriodRange = {
  */
 export class AccountManager {
   private static nextEntryId: number = 1
+  private static nextPaymentMethodId: number = 4
+  private static nextAutoRenewalId: number = 1
 
   static initIds(): void {
+    StorageUtils.getPaymentMethods()
     const entries = StorageUtils.getAccountEntries()
     if (entries.length > 0) {
       this.nextEntryId = Math.max(...entries.map(entry => entry.id)) + 1
     }
+    const methods = StorageUtils.getPaymentMethods()
+    if (methods.length > 0) {
+      this.nextPaymentMethodId = Math.max(...methods.map(method => method.id)) + 1
+    }
+    const renewals = StorageUtils.getAutoRenewals()
+    if (renewals.length > 0) {
+      this.nextAutoRenewalId = Math.max(...renewals.map(renewal => renewal.id)) + 1
+    }
+    this.processDueAutoRenewals()
   }
 
   static getSortedEntries(): AccountEntry[] {
@@ -62,6 +84,8 @@ export class AccountManager {
       type: entry.type,
       amount: entry.amount,
       labelIdList: entry.labelIdList,
+      paymentMethodId: entry.paymentMethodId != null ? entry.paymentMethodId : this.getDefaultPaymentMethodId(),
+      autoRenewalId: entry.autoRenewalId != null ? entry.autoRenewalId : 0,
       remark: entry.remark,
       occurredAt: entry.occurredAt,
       id: this.nextEntryId++,
@@ -98,6 +122,195 @@ export class AccountManager {
   static getEntryById(entryId: number): AccountEntry | null {
     const entry = StorageUtils.getAccountEntries().find(item => item.id === entryId)
     return entry != null ? entry : null
+  }
+
+  static getPaymentMethods(): PaymentMethod[] {
+    return StorageUtils.getPaymentMethods()
+  }
+
+  static getDefaultPaymentMethodId(): number {
+    const methods = StorageUtils.getPaymentMethods()
+    const found = methods.find(method => method.isDefault == true)
+    return found != null ? found.id : 1
+  }
+
+  static getPaymentMethodName(paymentMethodId: number): string {
+    const method = StorageUtils.getPaymentMethods().find(item => item.id == paymentMethodId)
+    return method != null ? method.name : '未设置'
+  }
+
+  static addPaymentMethod(input: PaymentMethodInput): boolean {
+    const name = input.name.trim()
+    if (name.length === 0) return false
+    const methods = StorageUtils.getPaymentMethods()
+    if (methods.find(item => item.name == name) != null) return false
+    const now = Date.now()
+    methods.push({
+      id: this.nextPaymentMethodId++,
+      name,
+      isDefault: methods.length === 0,
+      sortOrder: methods.length + 1,
+      createTime: now,
+      updateTime: now
+    })
+    return StorageUtils.savePaymentMethods(methods)
+  }
+
+  static updatePaymentMethod(method: PaymentMethod): boolean {
+    const name = method.name.trim()
+    if (name.length === 0) return false
+    const methods = StorageUtils.getPaymentMethods()
+    if (methods.find(item => item.id != method.id && item.name == name) != null) return false
+    const index = methods.findIndex(item => item.id == method.id)
+    if (index === -1) return false
+    methods[index] = {
+      ...methods[index],
+      name,
+      updateTime: Date.now()
+    }
+    return StorageUtils.savePaymentMethods(methods)
+  }
+
+  static setDefaultPaymentMethod(paymentMethodId: number): boolean {
+    const methods = StorageUtils.getPaymentMethods()
+    if (methods.find(item => item.id == paymentMethodId) == null) return false
+    const next = methods.map((method): PaymentMethod => {
+      return {
+        ...method,
+        isDefault: method.id == paymentMethodId,
+        updateTime: method.id == paymentMethodId ? Date.now() : method.updateTime
+      }
+    })
+    return StorageUtils.savePaymentMethods(next)
+  }
+
+  static deletePaymentMethod(paymentMethodId: number): boolean {
+    const methods = StorageUtils.getPaymentMethods()
+    if (methods.length <= 1) return false
+    const removed = methods.find(item => item.id == paymentMethodId)
+    if (removed == null) return false
+    const remaining = methods.filter(item => item.id != paymentMethodId)
+    if (remaining.find(item => item.isDefault == true) == null) {
+      remaining[0].isDefault = true
+      remaining[0].updateTime = Date.now()
+    }
+    const fallback = remaining.find(item => item.isDefault == true)
+    const fallbackId = fallback != null ? fallback.id : remaining[0].id
+    const entries = StorageUtils.getAccountEntries().map((entry): AccountEntry => {
+      if (entry.paymentMethodId != paymentMethodId) return entry
+      return { ...entry, paymentMethodId: fallbackId, updateTime: Date.now() }
+    })
+    const renewals = StorageUtils.getAutoRenewals().map((renewal): AutoRenewal => {
+      if (renewal.paymentMethodId != paymentMethodId) return renewal
+      return { ...renewal, paymentMethodId: fallbackId, updateTime: Date.now() }
+    })
+    return StorageUtils.savePaymentMethods(remaining)
+      && StorageUtils.saveAccountEntries(entries)
+      && StorageUtils.saveAutoRenewals(renewals)
+  }
+
+  static getAutoRenewals(): AutoRenewal[] {
+    return StorageUtils.getAutoRenewals().sort((a, b) => a.nextChargeDate - b.nextChargeDate)
+  }
+
+  static addAutoRenewal(input: AutoRenewalInput): boolean {
+    const name = input.name.trim()
+    if (name.length === 0 || input.amount <= 0) return false
+    const date = new Date(input.nextChargeDate)
+    const now = Date.now()
+    const renewals = StorageUtils.getAutoRenewals()
+    renewals.push({
+      id: this.nextAutoRenewalId++,
+      name,
+      amount: input.amount,
+      paymentMethodId: input.paymentMethodId > 0 ? input.paymentMethodId : this.getDefaultPaymentMethodId(),
+      labelIdList: input.labelIdList,
+      chargeDay: date.getDate(),
+      nextChargeDate: this.getDayStart(input.nextChargeDate),
+      isEnabled: input.isEnabled,
+      remark: input.remark,
+      createTime: now,
+      updateTime: now
+    })
+    return StorageUtils.saveAutoRenewals(renewals)
+  }
+
+  static updateAutoRenewal(renewal: AutoRenewal): boolean {
+    const name = renewal.name.trim()
+    if (name.length === 0 || renewal.amount <= 0) return false
+    const renewals = StorageUtils.getAutoRenewals()
+    const index = renewals.findIndex(item => item.id === renewal.id)
+    if (index === -1) return false
+    const date = new Date(renewal.nextChargeDate)
+    renewals[index] = {
+      ...renewal,
+      name,
+      chargeDay: date.getDate(),
+      nextChargeDate: this.getDayStart(renewal.nextChargeDate),
+      remark: renewal.remark.trim(),
+      updateTime: Date.now()
+    }
+    return StorageUtils.saveAutoRenewals(renewals)
+  }
+
+  static deleteAutoRenewal(renewalId: number): boolean {
+    return StorageUtils.saveAutoRenewals(StorageUtils.getAutoRenewals().filter(renewal => renewal.id !== renewalId))
+  }
+
+  static processDueAutoRenewals(): number {
+    const renewals = StorageUtils.getAutoRenewals()
+    if (renewals.length === 0) return 0
+
+    const todayStart = this.getDayStart(Date.now())
+    const entries = StorageUtils.getAccountEntries()
+    let createdCount = 0
+    let changed = false
+    const nextRenewals = renewals.map((renewal): AutoRenewal => {
+      if (renewal.isEnabled == false || renewal.nextChargeDate > todayStart || renewal.amount <= 0) {
+        return renewal
+      }
+
+      const originalNextDate = this.getDayStart(renewal.nextChargeDate)
+      let nextDate = this.getDayStart(renewal.nextChargeDate)
+      let loopCount = 0
+      while (nextDate <= todayStart && loopCount < 24) {
+        const duplicate = entries.find(entry => entry.autoRenewalId === renewal.id && this.getDayStart(entry.occurredAt) === nextDate)
+        if (duplicate == null) {
+          const now = Date.now()
+          entries.push({
+            id: this.nextEntryId++,
+            type: 'expense',
+            amount: renewal.amount,
+            labelIdList: renewal.labelIdList,
+            paymentMethodId: renewal.paymentMethodId,
+            autoRenewalId: renewal.id,
+            remark: renewal.remark.length > 0 ? renewal.remark : `自动续费：${renewal.name}`,
+            occurredAt: nextDate,
+            createTime: now,
+            updateTime: now
+          })
+          createdCount += 1
+        }
+        nextDate = this.addOneMonth(nextDate, renewal.chargeDay)
+        loopCount += 1
+      }
+      if (nextDate !== originalNextDate) {
+        changed = true
+      }
+
+      return {
+        ...renewal,
+        nextChargeDate: nextDate,
+        updateTime: nextDate !== originalNextDate ? Date.now() : renewal.updateTime
+      }
+    })
+
+    if (changed == true) {
+      if (!StorageUtils.saveAccountEntries(entries)) return 0
+      if (!StorageUtils.saveAutoRenewals(nextRenewals)) return 0
+      this.syncWidgetSnapshot()
+    }
+    return createdCount
   }
 
   static getStatsByLabel(period: StatsPeriod): AccountLabelStats[] {
@@ -191,9 +404,10 @@ export class AccountManager {
   static getMonthlyLabelBudgetOverviews(): LabelBudgetOverview[] {
     const settings = StorageUtils.getBudgetSettings()
     const stats = this.getStatsByLabelAndType('month', 'expense')
+    const validLabelIds = StorageUtils.getAccountLabels().map(label => label.id)
 
     return settings.labelMonthlyBudgets
-      .filter(budget => budget.labelId > 0 && budget.amount > 0)
+      .filter(budget => budget.labelId > 0 && budget.amount > 0 && validLabelIds.includes(budget.labelId))
       .map((budget): LabelBudgetOverview => {
         const stat = stats.find(item => item.labelId === budget.labelId)
         const usedAmount = stat != null ? stat.totalAmount : 0
@@ -218,6 +432,7 @@ export class AccountManager {
     type: 'expense' | 'income' | 'all'
   ): AccountLabelStats[] {
     const statsMap = new Map<number, AccountLabelStats>()
+    const validLabelIds = StorageUtils.getAccountLabels().map(label => label.id)
 
     entries.forEach(entry => {
       if (entry.occurredAt < start || entry.occurredAt > end) {
@@ -228,27 +443,15 @@ export class AccountManager {
         return
       }
 
-      const labelIds = this.parseLabelIds(entry.labelIdList)
-      if (labelIds.length === 0) {
-        const cached = statsMap.get(0)
-        const current: AccountLabelStats = cached != null
-          ? cached
-          : { labelId: 0, count: 0, totalAmount: 0, type }
-        current.count += 1
-        current.totalAmount += entry.amount
-        statsMap.set(0, current)
-        return
-      }
-
-      labelIds.forEach(labelId => {
-        const cached = statsMap.get(labelId)
-        const current: AccountLabelStats = cached != null
-          ? cached
-          : { labelId, count: 0, totalAmount: 0, type }
-        current.count += 1
-        current.totalAmount += entry.amount
-        statsMap.set(labelId, current)
-      })
+      const labelIds = this.parseLabelIds(entry.labelIdList).filter(labelId => validLabelIds.includes(labelId))
+      const primaryLabelId = labelIds.length > 0 ? labelIds[0] : 0
+      const cached = statsMap.get(primaryLabelId)
+      const current: AccountLabelStats = cached != null
+        ? cached
+        : { labelId: primaryLabelId, count: 0, totalAmount: 0, type }
+      current.count += 1
+      current.totalAmount += entry.amount
+      statsMap.set(primaryLabelId, current)
     })
 
     const results: AccountLabelStats[] = []
@@ -301,6 +504,20 @@ export class AccountManager {
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
     return { start: monthStart, end }
+  }
+
+  private static getDayStart(timestamp: number): number {
+    const date = new Date(timestamp)
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  }
+
+  private static addOneMonth(timestamp: number, chargeDay: number): number {
+    const date = new Date(timestamp)
+    const targetMonth = date.getMonth() + 1
+    const targetYear = date.getFullYear()
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate()
+    const day = Math.min(chargeDay, lastDay)
+    return new Date(targetYear, targetMonth, day).getTime()
   }
 
   private static syncWidgetSnapshot(): void {

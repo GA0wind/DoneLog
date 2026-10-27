@@ -1,6 +1,8 @@
 <template>
-	<scroll-view direction="vertical" style="flex: 1" class="container">
-		<view class="form">
+	<view class="page-shell">
+		<scroll-view direction="vertical" style="flex: 1" class="container">
+			<view class="page-content">
+				<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
 				<text class="label">事件名称 *</text>
@@ -32,24 +34,30 @@
 			<!-- 重复方式选择 -->
 			<view class="form-item">
 				<text class="label">重复方式</text>
-				<radio-group @change="onRepeatTypeChange">
-					<label class="radio-item">
-						<radio value="interval" :checked="repeatType === 'interval'" />
+				<view class="repeat-options">
+					<view class="radio-item" @click="selectRepeatType('interval')">
+						<view class="radio-dot" :class="{ active: repeatType === 'interval' }">
+							<text class="radio-dot-check" v-if="repeatType === 'interval'">✓</text>
+						</view>
 						<text class="radio-text">按间隔周期</text>
-					</label>
-					<label class="radio-item">
-						<radio value="date" :checked="repeatType === 'date'" />
+					</view>
+					<view class="radio-item" @click="selectRepeatType('date')">
+						<view class="radio-dot" :class="{ active: repeatType === 'date' }">
+							<text class="radio-dot-check" v-if="repeatType === 'date'">✓</text>
+						</view>
 						<text class="radio-text">自定义下次完成时间</text>
-					</label>
-					<label class="radio-item">
-						<radio value="single" :checked="repeatType === 'single'" />
+					</view>
+					<view class="radio-item" @click="selectRepeatType('single')">
+						<view class="radio-dot" :class="{ active: repeatType === 'single' }">
+							<text class="radio-dot-check" v-if="repeatType === 'single'">✓</text>
+						</view>
 						<text class="radio-text">不重复</text>
-					</label>
-				</radio-group>
+					</view>
+				</view>
 			</view>
 
 			<!-- 间隔天数 -->
-			<view class="form-item" v-if="repeatType === 'interval'">
+			<view class="form-item" v-if="showIntervalSettings">
 				<text class="label">{{intervalFieldLabel}}</text>
 				<view class="interval-unit-row">
 					<view
@@ -72,13 +80,11 @@
 			</view>
 
 			<!-- 下次完成时间 -->
-			<view class="form-item" v-if="repeatType === 'date'">
+			<view class="form-item" v-if="showDateSettings">
 				<text class="label">下次完成时间</text>
-				<picker mode="date" :value="nextDueDate" @change="onDateChange">
-					<view class="picker">
-						<text>{{nextDueDate.length > 0 ? nextDueDate : '请选择日期'}}</text>
-					</view>
-				</picker>
+				<view class="picker" @click="openDateSelector">
+					<text>{{nextDueDate.length > 0 ? nextDueDate : '请选择日期'}}</text>
+				</view>
 			</view>
 
 			<view class="form-item">
@@ -90,15 +96,34 @@
 				<text class="field-tip" v-if="isCompletedToday">保存后会自动生成今天的完成记录；不重复事项会直接终止。</text>
 			</view>
 
+			<view class="form-item">
+				<text class="label">提醒通知</text>
+				<label class="switch-row">
+					<switch :checked="notifyEnabled" color="#1F7A72" @change="onNotifyEnabledChange" />
+					<text class="switch-text">开启事件提醒</text>
+				</label>
+				<picker v-if="notifyEnabled" mode="time" :value="notifyTime" @change="onNotifyTimeChange">
+					<view class="picker notify-time-picker">
+						<text>{{notifyTime}}</text>
+					</view>
+				</picker>
+				<text class="field-tip" v-if="notifyEnabled">不重复事项会每天提醒；重复事项从应完成日开始每天提醒，直到完成。</text>
+			</view>
+
 			<!-- 备注 -->
 			<view class="form-item">
 				<text class="label">备注</text>
 				<textarea class="textarea" v-model="remark" placeholder="请输入备注（可选）" />
 			</view>
 
-			<!-- 保存按钮 -->
-			<button class="save-btn" @click="saveEvent">保存</button>
-		</view>
+			<view class="save-btn" @click="saveEvent">
+				<text class="save-btn-text">保存</text>
+			</view>
+
+				</view>
+				<view class="form-bottom-gap"></view>
+			</view>
+		</scroll-view>
 
 		<!-- 标签选择弹窗 -->
 		<view class="modal selector-modal" v-if="showLabelSelector" @click="hideLabelModal">
@@ -159,17 +184,54 @@
 				</view>
 			</view>
 		</view>
-	</scroll-view>
+
+		<view class="modal date-modal" v-if="showDateSelector" @click="hideDateSelector">
+			<view class="modal-content date-modal-content" @click.stop>
+				<text class="modal-title">选择日期</text>
+				<view class="date-calendar-header">
+					<view class="date-nav-btn" @click.stop="prevDatePickerMonth"><text class="date-nav-text">‹</text></view>
+					<text class="date-calendar-title">{{yearOptions[selectedYearIndex]}} 年 {{monthOptions[selectedMonthIndex]}} 月</text>
+					<view class="date-nav-btn" @click.stop="nextDatePickerMonth"><text class="date-nav-text">›</text></view>
+				</view>
+				<view class="date-week-row">
+					<text class="date-week-text" v-for="item in dateWeekdays" :key="item">{{item}}</text>
+				</view>
+				<view class="date-grid">
+					<view
+						class="date-day"
+						v-for="(item, index) in datePickerDays"
+						:key="index"
+						:class="{ selected: item.isCurrentMonth && isSelectedDatePickerDay(item), muted: !item.isCurrentMonth }"
+						@click.stop="selectDatePickerDay(item)"
+					>
+						<text class="date-day-text" :class="{ selected: item.isCurrentMonth && isSelectedDatePickerDay(item), muted: !item.isCurrentMonth }">{{item.day}}</text>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click.stop="hideDateSelector">取消</button>
+					<button class="confirm-btn" @click.stop="confirmDateSelector">确定</button>
+				</view>
+			</view>
+		</view>
+	</view>
 </template>
 
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { EventInput, Label, RepeatUnit } from '@/utils/storage.uts'
+	import { requestEventNotificationPermission } from '@/uni_modules/donelogWidget/utssdk'
 
 	type IntervalUnitOption = {
 		value: RepeatUnit
 		label: string
+	}
+
+	type DatePickerDay = {
+		year: number
+		month: number
+		day: number
+		isCurrentMonth: boolean
 	}
 
 	// 响应式数据
@@ -182,11 +244,17 @@
 	const nextDueDate = ref('')
 	const remark = ref('')
 	const isCompletedToday = ref(false)
+	const notifyEnabled = ref(false)
+	const notifyTime = ref('09:00')
 	const showLabelSelector = ref(false)
 	const showAddLabelModal = ref(false)
+	const showDateSelector = ref(false)
 	const newLabelName = ref('')
 	const newLabelError = ref('')
 	const newLabelColor = ref('#007AFF')
+	const selectedYearIndex = ref(0)
+	const selectedMonthIndex = ref(0)
+	const selectedDayIndex = ref(0)
 
 	// 预设颜色选项
 	const colorOptions = [
@@ -208,6 +276,74 @@
 		{ value: 'year', label: '按年' }
 	]
 
+	const createYearOptions = (): string[] => {
+		const options: string[] = []
+		const currentYear = new Date().getFullYear()
+		for (let i = 0; i < 8; i++) {
+			options.push(`${currentYear + i}`)
+		}
+		return options
+	}
+
+	const createMonthOptions = (): string[] => {
+		const options: string[] = []
+		for (let i = 1; i <= 12; i++) {
+			options.push(`${i}`.padStart(2, '0'))
+		}
+		return options
+	}
+
+	const createDayOptions = (year: number, month: number): string[] => {
+		const options: string[] = []
+		const days = new Date(year, month, 0).getDate()
+		for (let i = 1; i <= days; i++) {
+			options.push(`${i}`.padStart(2, '0'))
+		}
+		return options
+	}
+
+	const createDatePickerDays = (year: number, month: number): DatePickerDay[] => {
+		const days: DatePickerDay[] = []
+		const firstDay = new Date(year, month - 1, 1)
+		const lastDay = new Date(year, month, 0)
+		const prevLastDay = new Date(year, month - 1, 0)
+		const startWeekday = firstDay.getDay()
+
+		for (let i = startWeekday - 1; i >= 0; i--) {
+			days.push({
+				year: month === 1 ? year - 1 : year,
+				month: month === 1 ? 12 : month - 1,
+				day: prevLastDay.getDate() - i,
+				isCurrentMonth: false
+			})
+		}
+
+		for (let i = 1; i <= lastDay.getDate(); i++) {
+			days.push({
+				year,
+				month,
+				day: i,
+				isCurrentMonth: true
+			})
+		}
+
+		const remainingDays = 42 - days.length
+		for (let i = 1; i <= remainingDays; i++) {
+			days.push({
+				year: month === 12 ? year + 1 : year,
+				month: month === 12 ? 1 : month + 1,
+				day: i,
+				isCurrentMonth: false
+			})
+		}
+
+		return days
+	}
+
+	const yearOptions = createYearOptions()
+	const monthOptions = createMonthOptions()
+	const dateWeekdays = ['日', '一', '二', '三', '四', '五', '六']
+
 	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
 		const detail = e['detail']
 		return detail != null ? detail as UTSJSONObject : null
@@ -225,6 +361,83 @@
 		if (detail == null) return false
 		const value = detail[key]
 		return value === true
+	}
+
+	const getSelectedYear = (): number => {
+		return parseInt(yearOptions[selectedYearIndex.value])
+	}
+
+	const getSelectedMonth = (): number => {
+		return parseInt(monthOptions[selectedMonthIndex.value])
+	}
+
+	const dayOptions = computed(() => createDayOptions(getSelectedYear(), getSelectedMonth()))
+	const datePickerDays = computed(() => createDatePickerDays(getSelectedYear(), getSelectedMonth()))
+
+	const getSelectedDay = (): number => {
+		return parseInt(dayOptions.value[selectedDayIndex.value])
+	}
+
+	const formatDateParts = (year: number, month: number, day: number): string => {
+		return `${year}-${`${month}`.padStart(2, '0')}-${`${day}`.padStart(2, '0')}`
+	}
+
+	const clampSelectedDay = () => {
+		const maxIndex = dayOptions.value.length - 1
+		if (selectedDayIndex.value > maxIndex) {
+			selectedDayIndex.value = maxIndex
+		}
+	}
+
+	const setDateSelectorValue = (date: Date) => {
+		const year = `${date.getFullYear()}`
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
+
+		const yearIndex = yearOptions.indexOf(year)
+		selectedYearIndex.value = yearIndex >= 0 ? yearIndex : 0
+		const monthIndex = monthOptions.indexOf(month)
+		selectedMonthIndex.value = monthIndex >= 0 ? monthIndex : 0
+		clampSelectedDay()
+		const dayIndex = dayOptions.value.indexOf(day)
+		selectedDayIndex.value = dayIndex >= 0 ? dayIndex : 0
+	}
+
+	const isSelectedDatePickerDay = (item: DatePickerDay): boolean => {
+		return item.year === getSelectedYear()
+			&& item.month === getSelectedMonth()
+			&& item.day === getSelectedDay()
+	}
+
+	const selectDatePickerDay = (item: DatePickerDay) => {
+		const yearIndex = yearOptions.indexOf(`${item.year}`)
+		if (yearIndex < 0) {
+			return
+		}
+		selectedYearIndex.value = yearIndex
+		selectedMonthIndex.value = item.month - 1
+		clampSelectedDay()
+		selectedDayIndex.value = Math.max(0, Math.min(dayOptions.value.length - 1, item.day - 1))
+	}
+
+	const prevDatePickerMonth = () => {
+		if (selectedMonthIndex.value > 0) {
+			selectedMonthIndex.value--
+		} else if (selectedYearIndex.value > 0) {
+			selectedYearIndex.value--
+			selectedMonthIndex.value = 11
+		}
+		clampSelectedDay()
+	}
+
+	const nextDatePickerMonth = () => {
+		if (selectedMonthIndex.value < 11) {
+			selectedMonthIndex.value++
+		} else if (selectedYearIndex.value < yearOptions.length - 1) {
+			selectedYearIndex.value++
+			selectedMonthIndex.value = 0
+		}
+		clampSelectedDay()
 	}
 
 	const intervalFieldLabel = computed(() => {
@@ -257,6 +470,9 @@
 		return '按“中间空几天”计算：0 表示明天再次需要完成。'
 	})
 
+	const showIntervalSettings = computed(() => repeatType.value === 'interval')
+	const showDateSettings = computed(() => repeatType.value === 'date')
+
 	// 加载标签列表
 	const loadLabels = () => {
 		labels.value = LabelManager.getSortedLabels('event')
@@ -264,12 +480,7 @@
 
 	// 切换标签选择
 	const toggleLabel = (labelId: number) => {
-		const index = selectedLabelIds.value.indexOf(labelId)
-		if (index > -1) {
-			selectedLabelIds.value.splice(index, 1)
-		} else {
-			selectedLabelIds.value.push(labelId)
-		}
+		selectedLabelIds.value = selectedLabelIds.value.includes(labelId) ? [] : [labelId]
 	}
 
 	// 显示标签选择弹窗
@@ -311,6 +522,10 @@
 		intervalUnit.value = unit
 	}
 
+	const selectRepeatType = (type: 'interval' | 'date' | 'single') => {
+		repeatType.value = type
+	}
+
 	// 新增标签
 	const addNewLabel = () => {
 		const createdName = newLabelName.value.trim()
@@ -325,9 +540,7 @@
 
 		const existingLabel = LabelManager.getLabelByName(createdName, 'event')
 		if (existingLabel != null) {
-			if (selectedLabelIds.value.includes(existingLabel.id) == false) {
-				selectedLabelIds.value.push(existingLabel.id)
-			}
+			selectedLabelIds.value = [existingLabel.id]
 			newLabelError.value = '已存在同名标签，已为你选中'
 			uni.showToast({
 				title: '标签已存在，已选中',
@@ -347,9 +560,7 @@
 			})
 			loadLabels()
 			const created = labels.value.find(item => item.name === createdName)
-			if (created != null && selectedLabelIds.value.includes(created.id) == false) {
-				selectedLabelIds.value.push(created.id)
-			}
+			if (created != null) selectedLabelIds.value = [created.id]
 			showAddLabelModal.value = false
 		} else {
 			newLabelError.value = '添加失败，请稍后再试'
@@ -372,23 +583,54 @@
 		return label != null ? label.color : '#007AFF'
 	}
 
-	// 重复方式改变
-	const onRepeatTypeChange = (e: UTSJSONObject) => {
-		const value = getDetailStringValue(e, 'value')
-		if (value === 'date' || value === 'single') {
-			repeatType.value = value
-			return
+	const openDateSelector = () => {
+		if (nextDueDate.value.length > 0) {
+			setDateSelectorValue(new Date(nextDueDate.value))
+		} else {
+			setDateSelectorValue(new Date(Date.now() + 24 * 60 * 60 * 1000))
 		}
-		repeatType.value = 'interval'
+		showDateSelector.value = true
 	}
 
-	// 日期改变
-	const onDateChange = (e: UTSJSONObject) => {
-		nextDueDate.value = getDetailStringValue(e, 'value')
+	const hideDateSelector = () => {
+		showDateSelector.value = false
+	}
+
+	const adjustSelectedYear = (offset: number) => {
+		selectedYearIndex.value = Math.max(0, Math.min(yearOptions.length - 1, selectedYearIndex.value + offset))
+		clampSelectedDay()
+	}
+
+	const adjustSelectedMonth = (offset: number) => {
+		selectedMonthIndex.value = Math.max(0, Math.min(monthOptions.length - 1, selectedMonthIndex.value + offset))
+		clampSelectedDay()
+	}
+
+	const adjustSelectedDay = (offset: number) => {
+		selectedDayIndex.value = Math.max(0, Math.min(dayOptions.value.length - 1, selectedDayIndex.value + offset))
+	}
+
+	const confirmDateSelector = () => {
+		nextDueDate.value = formatDateParts(getSelectedYear(), getSelectedMonth(), getSelectedDay())
+		hideDateSelector()
 	}
 
 	const onCompletedTodayChange = (e: UTSJSONObject) => {
 		isCompletedToday.value = getDetailBooleanValue(e, 'value')
+	}
+
+	const onNotifyEnabledChange = (e: UTSJSONObject) => {
+		notifyEnabled.value = getDetailBooleanValue(e, 'value')
+		if (notifyEnabled.value) {
+			requestEventNotificationPermission()
+		}
+	}
+
+	const onNotifyTimeChange = (e: UTSJSONObject) => {
+		const value = getDetailStringValue(e, 'value')
+		if (value.length > 0) {
+			notifyTime.value = value
+		}
 	}
 
 	// 保存事件
@@ -452,7 +694,9 @@
 			nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
 			remark: remark.value,
 			isTerminated: false,
-			terminatedAt: 0
+			terminatedAt: 0,
+			notifyEnabled: notifyEnabled.value,
+			notifyTime: notifyTime.value
 		}
 
 		const eventId = EventManager.addEventAndGetId(event)
@@ -486,22 +730,32 @@
 </script>
 
 <style>
-	.container {
-		padding: 15px;
-		padding-bottom: 44px;
-		background-color: #f4efe7;
+	.page-shell {
 		flex: 1;
+		background-color: #f4efe7;
+	}
+
+	.container {
+		flex: 1;
+		background-color: #f4efe7;
+	}
+
+	.page-content {
+		padding: 15px 15px 0;
 	}
 
 	.form {
 		background-color: #fffaf3;
 		border-radius: 24px;
 		padding: 18px;
-		margin-bottom: 20px;
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eadfd2;
 		box-shadow: 0 12px 28px rgba(36, 50, 58, 0.06);
+	}
+
+	.form-bottom-gap {
+		height: 36px;
 	}
 
 	.form-item {
@@ -641,15 +895,45 @@
 		border-color: #eee2d7;
 	}
 
+	.repeat-options {
+		padding-top: 2px;
+	}
+
 	.radio-item {
 		flex-direction: row;
 		align-items: center;
-		margin-bottom: 10px;
+		min-height: 46px;
+		margin-bottom: 4px;
 	}
 
 	.radio-text {
-		margin-left: 8px;
+		margin-left: 12px;
 		font-size: 14px;
+		color: #24323a;
+	}
+
+	.radio-dot {
+		width: 30px;
+		height: 30px;
+		border-radius: 15px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #d8d8d8;
+		background-color: #fffdf9;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.radio-dot.active {
+		background-color: #3478f6;
+		border-color: #3478f6;
+	}
+
+	.radio-dot-check {
+		font-size: 18px;
+		color: #fff;
+		font-weight: bold;
+		line-height: 30px;
 	}
 
 	.switch-row {
@@ -691,14 +975,156 @@
 
 	.save-btn {
 		background: linear-gradient(135deg, #1f7a72, #2a9d8f);
-		color: #fff;
 		height: 48px;
-		line-height: 48px;
 		border-radius: 24px;
-		font-size: 16px;
 		margin-top: 20px;
-		margin-bottom: 6px;
+		margin-bottom: 0;
+		justify-content: center;
+		align-items: center;
 		box-shadow: 0 14px 24px rgba(31, 122, 114, 0.2);
+	}
+
+	.notify-time-picker {
+		margin-top: 10px;
+	}
+
+	.save-btn-text {
+		font-size: 16px;
+		color: #fff;
+		font-weight: 600;
+		line-height: 48px;
+	}
+
+	.date-modal {
+		z-index: 1020;
+	}
+
+	.date-modal-content {
+		width: 88%;
+		padding: 18px;
+	}
+
+	.date-picker-row {
+		flex-direction: column;
+		margin-top: 8px;
+		margin-bottom: 14px;
+	}
+
+	.date-calendar-header {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.date-calendar-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #24323a;
+	}
+
+	.date-nav-btn {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		background-color: #f2ebe2;
+		justify-content: center;
+		align-items: center;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.date-nav-text {
+		font-size: 24px;
+		color: #4d5b67;
+		line-height: 40px;
+	}
+
+	.date-week-row {
+		flex-direction: row;
+		margin-bottom: 6px;
+	}
+
+	.date-week-text {
+		width: 14.28%;
+		text-align: center;
+		font-size: 12px;
+		color: #8792a1;
+	}
+
+	.date-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 14px;
+	}
+
+	.date-day {
+		width: 14.28%;
+		height: 38px;
+		justify-content: center;
+		align-items: center;
+		border-radius: 19px;
+	}
+
+	.date-day.selected {
+		background-color: #1f7a72;
+	}
+
+	.date-day-text {
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.date-day-text.selected {
+		color: #fff;
+		font-weight: bold;
+	}
+
+	.date-day-text.muted {
+		color: #c3b8ad;
+	}
+
+	.date-stepper {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.date-value {
+		flex: 1;
+		height: 48px;
+		border-radius: 16px;
+		background-color: #fffdf9;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eee2d7;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.date-step-btn {
+		width: 48px;
+		height: 48px;
+		border-radius: 24px;
+		background-color: #f2ebe2;
+		justify-content: center;
+		align-items: center;
+		margin: 0 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+	}
+
+	.date-step-text {
+		font-size: 24px;
+		color: #24323a;
+		line-height: 48px;
+	}
+
+	.date-picker-text {
+		font-size: 15px;
+		color: #24323a;
 	}
 
 	/* 弹窗样式 */

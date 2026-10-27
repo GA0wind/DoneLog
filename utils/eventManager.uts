@@ -1,5 +1,5 @@
 import { StorageUtils, Event, EventInput, CompletionRecord, RepeatUnit } from './storage.uts'
-import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
+import { cancelEventNotifications, saveWidgetSnapshot, scheduleEventNotifications } from '@/uni_modules/donelogWidget/utssdk'
 
 export type StatsPeriod = 'week' | 'month'
 
@@ -21,9 +21,21 @@ export type EventLatestCompletion = {
   lastCompleteDate: number
 }
 
+export type EventNotificationSchedule = {
+  id: number
+  name: string
+  notifyTime: string
+  nextNotifyAt: number
+}
+
 type PeriodRange = {
   start: number
   end: number
+}
+
+type NotifyTimeParts = {
+  hour: number
+  minute: number
 }
 
 /**
@@ -52,6 +64,8 @@ export class EventManager {
     if (records.length > 0) {
       this.nextRecordId = Math.max(...records.map(r => r.id)) + 1
     }
+
+    this.syncEventNotifications()
   }
 
   /**
@@ -312,6 +326,8 @@ export class EventManager {
       remark: event.remark,
       isTerminated: event.isTerminated,
       terminatedAt: event.terminatedAt,
+      notifyEnabled: event.notifyEnabled,
+      notifyTime: event.notifyTime,
       id: this.nextEventId++,
       createTime: Date.now(),
       updateTime: Date.now()
@@ -320,6 +336,7 @@ export class EventManager {
     const success = StorageUtils.saveEvents(events)
     if (success == true) {
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
       return newEvent.id
     }
     return 0
@@ -337,7 +354,9 @@ export class EventManager {
       nextDueDate: source.nextDueDate,
       remark: source.remark,
       isTerminated: false,
-      terminatedAt: 0
+      terminatedAt: 0,
+      notifyEnabled: source.notifyEnabled,
+      notifyTime: source.notifyTime
     })
   }
 
@@ -354,6 +373,7 @@ export class EventManager {
     const success = StorageUtils.saveEvents(events)
     if (success == true) {
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
     }
     return success
   }
@@ -372,6 +392,7 @@ export class EventManager {
     const success = StorageUtils.saveEvents(events)
     if (success == true) {
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
     }
     return success
   }
@@ -393,6 +414,7 @@ export class EventManager {
 
     if (success == true) {
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
     }
     return success
   }
@@ -441,8 +463,18 @@ export class EventManager {
     const success = StorageUtils.saveCompletionRecords(records)
     if (success == true) {
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
     }
     return success
+  }
+
+  static syncEventNotifications(): void {
+    const schedules = this.getEventNotificationSchedules()
+    if (schedules.length === 0) {
+      cancelEventNotifications()
+      return
+    }
+    scheduleEventNotifications(JSON.stringify(schedules))
   }
 
   /**
@@ -464,6 +496,7 @@ export class EventManager {
   static getCompletionStatsByLabel(period: StatsPeriod): EventLabelStats[] {
     const events = StorageUtils.getEvents()
     const records = StorageUtils.getCompletionRecords()
+    const validLabelIds = StorageUtils.getEventLabels().map(label => label.id)
     const range = this.getPeriodRange(period)
     const statsMap = new Map<number, EventLabelStats>()
 
@@ -477,7 +510,7 @@ export class EventManager {
         return
       }
 
-      const labelIds = this.parseLabelIds(event.labelIdList)
+      const labelIds = this.parseLabelIds(event.labelIdList).filter(labelId => validLabelIds.includes(labelId))
       if (labelIds.length === 0) {
         const cached = statsMap.get(0)
         const uncategorized: EventLabelStats = cached != null ? cached : { labelId: 0, count: 0 }
@@ -536,14 +569,100 @@ export class EventManager {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
   }
 
+  private static getEventNotificationSchedules(): EventNotificationSchedule[] {
+    const events = StorageUtils.getEvents()
+    const records = StorageUtils.getCompletionRecords()
+    const latestRecordByEventId = this.getLatestRecordMap(records)
+    const schedules: EventNotificationSchedule[] = []
+
+    events.forEach(event => {
+      if (event.notifyEnabled == false || event.isTerminated) {
+        return
+      }
+
+      const notifyParts = this.parseNotifyTime(event.notifyTime)
+      if (notifyParts == null) {
+        return
+      }
+
+      const latestRecord = latestRecordByEventId.get(event.id)
+      const dueDateStart = this.getDueDateStart(event, latestRecord != null ? latestRecord.lastCompleteDate : null)
+      if (dueDateStart == null) {
+        return
+      }
+
+      schedules.push({
+        id: event.id,
+        name: event.name,
+        notifyTime: event.notifyTime,
+        nextNotifyAt: this.getNextNotifyAt(dueDateStart, notifyParts)
+      })
+    })
+
+    return schedules
+  }
+
+  private static parseNotifyTime(notifyTime: string): NotifyTimeParts | null {
+    const parts = notifyTime.split(':')
+    if (parts.length < 2) {
+      return null
+    }
+
+    const hour = parseInt(parts[0])
+    const minute = parseInt(parts[1])
+    if (Number.isNaN(hour) || Number.isNaN(minute)) {
+      return null
+    }
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null
+    }
+
+    return { hour, minute }
+  }
+
+  private static getNextNotifyAt(dueDateStart: number, notifyParts: NotifyTimeParts): number {
+    const dueDate = new Date(dueDateStart)
+    const dueNotifyAt = new Date(
+      dueDate.getFullYear(),
+      dueDate.getMonth(),
+      dueDate.getDate(),
+      notifyParts.hour,
+      notifyParts.minute
+    ).getTime()
+    const now = Date.now()
+    if (dueNotifyAt > now) {
+      return dueNotifyAt
+    }
+
+    const today = new Date()
+    let nextNotifyAt = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      notifyParts.hour,
+      notifyParts.minute
+    ).getTime()
+    if (nextNotifyAt <= now) {
+      nextNotifyAt += this.oneDay
+    }
+    return nextNotifyAt
+  }
+
   private static addMonths(timestamp: number, months: number): number {
     const date = new Date(timestamp)
-    return new Date(date.getFullYear(), date.getMonth() + months, date.getDate()).getTime()
+    const targetMonthStart = new Date(date.getFullYear(), date.getMonth() + months, 1)
+    const targetYear = targetMonthStart.getFullYear()
+    const targetMonth = targetMonthStart.getMonth()
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate()
+    return new Date(targetYear, targetMonth, Math.min(date.getDate(), lastDay)).getTime()
   }
 
   private static addYears(timestamp: number, years: number): number {
     const date = new Date(timestamp)
-    return new Date(date.getFullYear() + years, date.getMonth(), date.getDate()).getTime()
+    const targetYear = date.getFullYear() + years
+    const targetMonth = date.getMonth()
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate()
+    return new Date(targetYear, targetMonth, Math.min(date.getDate(), lastDay)).getTime()
   }
 
   private static parseLabelIds(labelIdList: string): number[] {
@@ -607,6 +726,7 @@ export class EventManager {
         intervalSemanticsVersion: this.intervalSemanticsVersion
       })
       this.syncWidgetSnapshot()
+      this.syncEventNotifications()
     }
   }
 
@@ -622,13 +742,20 @@ export class EventManager {
   }
 
   private static syncWidgetSnapshot(): void {
+    const todayStart = this.getTodayStart()
+    const tomorrowStart = new Date(new Date(todayStart).getFullYear(), new Date(todayStart).getMonth(), new Date(todayStart).getDate() + 1).getTime()
+    let income = 0
+    let expense = 0
+    let count = 0
+    StorageUtils.getAccountEntries().forEach(entry => {
+      if (entry.occurredAt < todayStart || entry.occurredAt >= tomorrowStart) return
+      count += 1
+      if (entry.type === 'income') income += entry.amount
+      else expense += entry.amount
+    })
     saveWidgetSnapshot(JSON.stringify({
       items: this.getWidgetSnapshot(),
-      overview: {
-        income: 0,
-        expense: 0,
-        count: 0
-      }
+      overview: { income, expense, count }
     }))
   }
 }

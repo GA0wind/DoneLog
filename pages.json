@@ -3,7 +3,7 @@
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "DoneLog"
+				"navigationBarTitleText": "做完记"
 			}
 		},
 		{
@@ -34,6 +34,12 @@
 			"path": "pages/account/index",
 			"style": {
 				"navigationBarTitleText": "记账"
+			}
+		},
+		{
+			"path": "pages/account/settings",
+			"style": {
+				"navigationBarTitleText": "记账设置"
 			}
 		},
 		{
@@ -75,7 +81,7 @@
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "DoneLog",
+		"navigationBarTitleText": "做完记",
 		"navigationBarBackgroundColor": "#F7F2EA",
 		"backgroundColor": "#F4EFE7"
 	},
