@@ -33,7 +33,7 @@
 				<view class="row-icon income-icon"><text class="row-icon-text">收</text></view>
 				<view class="row-main">
 					<text class="row-title">记账收入</text>
-					<text class="row-desc">{{period === 'week' ? '本周' : '本月'}}收入合计 · {{accountOverview.count}} 笔</text>
+					<text class="row-desc">{{period === 'week' ? '本周' : '本月'}}收入合计</text>
 				</view>
 				<text class="row-value">¥{{accountOverview.income.toFixed(2)}}</text>
 			</view>
