@@ -48,7 +48,7 @@
 			</view>
 
 			<view class="focus-card" v-if="canComplete" @click="startPomodoro">
-				<view>
+				<view class="focus-copy">
 					<text class="focus-title">专注推进这个事件</text>
 					<text class="focus-desc">开启一个番茄钟，完成后再回来标记完成。</text>
 				</view>
@@ -471,6 +471,11 @@
 		box-shadow: 0 12px 24px rgba(93, 127, 163, 0.18);
 	}
 
+	.focus-copy {
+		flex: 1;
+		min-width: 0;
+	}
+
 	.focus-title {
 		font-size: 15px;
 		font-weight: bold;
@@ -485,6 +490,7 @@
 	}
 
 	.focus-action {
+		flex-shrink: 0;
 		font-size: 12px;
 		font-weight: 600;
 		color: #fff9f2;

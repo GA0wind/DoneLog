@@ -48,7 +48,7 @@
 			<text class="add-icon">+</text>
 		</view>
 
-		<view class="modal" v-if="showModal && !showLabelSelector && !showAddLabelModal" @click="hideModal">
+		<view class="modal" v-if="showModal && !showLabelSelector && !showAddLabelModal && !showPaymentSelector && !showDateSelector" @click="hideModal">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">{{editingId > 0 ? '编辑记账' : '新增记账'}}</text>
 				<scroll-view direction="vertical" class="account-form-body">
@@ -88,16 +88,12 @@
 
 					<view class="form-item">
 						<text class="label">支付方式</text>
-						<picker mode="selector" :range="paymentMethodNames" :value="selectedPaymentMethodIndex" @change="onPaymentMethodChange">
-							<view class="picker"><text>{{selectedPaymentMethodName}}</text></view>
-						</picker>
+						<view class="picker" @click="showPaymentSelector = true"><text>{{selectedPaymentMethodName}}</text></view>
 					</view>
 
 					<view class="form-item">
 						<text class="label">记账日期</text>
-						<picker mode="date" :value="formDate" @change="onDateChange">
-							<view class="picker"><text>{{formDate}}</text></view>
-						</picker>
+						<view class="picker" @click="openDateSelector"><text>{{formDate}}</text></view>
 					</view>
 
 					<view class="form-item last-form-item">
@@ -111,6 +107,40 @@
 				<view class="modal-footer">
 					<button class="cancel-btn" @click="hideModal">取消</button>
 					<button class="confirm-btn" @click="saveEntry">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showPaymentSelector" @click="showPaymentSelector = false">
+			<view class="modal-content selector-modal-content" @click.stop>
+				<text class="modal-title">选择支付方式</text>
+				<scroll-view direction="vertical" class="selector-body payment-selector-body">
+					<view class="selector-item" :class="{ selected: formPaymentMethodId === method.id }" v-for="method in paymentMethods" :key="method.id" @click="selectPaymentMethod(method.id)">
+						<text class="selector-name">{{method.name}}</text>
+						<text class="selector-check" :class="{ visible: formPaymentMethodId === method.id }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer"><button class="cancel-btn single-cancel-btn" @click="showPaymentSelector = false">取消</button></view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showDateSelector" @click="showDateSelector = false">
+			<view class="modal-content date-modal-content" @click.stop>
+				<text class="modal-title">选择记账日期</text>
+				<view class="date-calendar-header">
+					<view class="date-nav-btn" @click="changeDatePickerMonth(-1)"><text class="date-nav-text">‹</text></view>
+					<text class="date-calendar-title">{{selectedDateYear}} 年 {{selectedDateMonth}} 月</text>
+					<view class="date-nav-btn" @click="changeDatePickerMonth(1)"><text class="date-nav-text">›</text></view>
+				</view>
+				<view class="date-week-row"><text class="date-week-text" v-for="item in dateWeekdays" :key="item">{{item}}</text></view>
+				<view class="date-grid">
+					<view class="date-day" v-for="(item, index) in datePickerDays" :key="index" :class="{ selected: isSelectedDatePickerDay(item) }" @click="selectDatePickerDay(item)">
+						<text class="date-day-text" :class="{ selected: isSelectedDatePickerDay(item), muted: !item.isCurrentMonth }">{{item.day}}</text>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click="showDateSelector = false">取消</button>
+					<button class="confirm-btn" @click="confirmDateSelector">确定</button>
 				</view>
 			</view>
 		</view>
@@ -269,6 +299,13 @@
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountEntry, AccountEntryInput, AutoRenewal, Label, PaymentMethod } from '@/utils/storage.uts'
 
+	type DatePickerDay = {
+		year: number
+		month: number
+		day: number
+		isCurrentMonth: boolean
+	}
+
 	const entries = ref<AccountEntry[]>([])
 	const labels = ref<Label[]>([])
 	const paymentMethods = ref<PaymentMethod[]>([])
@@ -278,6 +315,8 @@
 	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
 
 	const showModal = ref(false)
+	const showPaymentSelector = ref(false)
+	const showDateSelector = ref(false)
 	const showAddLabelModal = ref(false)
 	const showLabelSelector = ref(false)
 	const showBudgetModal = ref(false)
@@ -290,6 +329,10 @@
 	const formLabelIds = ref<number[]>([])
 	const formPaymentMethodId = ref(1)
 	const formDate = ref('')
+	const selectedDateYear = ref(new Date().getFullYear())
+	const selectedDateMonth = ref(new Date().getMonth() + 1)
+	const selectedDateDay = ref(new Date().getDate())
+	const dateWeekdays = ['日', '一', '二', '三', '四', '五', '六']
 	const formRemark = ref('')
 	const editingRenewalId = ref(0)
 	const renewalName = ref('')
@@ -341,6 +384,58 @@
 		const month = `${date.getMonth() + 1}`.padStart(2, '0')
 		const day = `${date.getDate()}`.padStart(2, '0')
 		return `${year}-${month}-${day}`
+	}
+
+	const createDatePickerDays = (year: number, month: number): DatePickerDay[] => {
+		const days: DatePickerDay[] = []
+		const firstWeekday = new Date(year, month - 1, 1).getDay()
+		const prevMonthLastDay = new Date(year, month - 1, 0).getDate()
+		const currentMonthLastDay = new Date(year, month, 0).getDate()
+		for (let i = firstWeekday - 1; i >= 0; i--) {
+			const date = new Date(year, month - 2, prevMonthLastDay - i)
+			days.push({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), isCurrentMonth: false })
+		}
+		for (let day = 1; day <= currentMonthLastDay; day++) {
+			days.push({ year, month, day, isCurrentMonth: true })
+		}
+		for (let day = 1; days.length < 42; day++) {
+			const date = new Date(year, month, day)
+			days.push({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), isCurrentMonth: false })
+		}
+		return days
+	}
+
+	const datePickerDays = computed(() => createDatePickerDays(selectedDateYear.value, selectedDateMonth.value))
+	const isSelectedDatePickerDay = (item: DatePickerDay): boolean => {
+		return item.year === selectedDateYear.value && item.month === selectedDateMonth.value && item.day === selectedDateDay.value
+	}
+	const selectDatePickerDay = (item: DatePickerDay) => {
+		selectedDateYear.value = item.year
+		selectedDateMonth.value = item.month
+		selectedDateDay.value = item.day
+	}
+	const changeDatePickerMonth = (offset: number) => {
+		const date = new Date(selectedDateYear.value, selectedDateMonth.value - 1 + offset, 1)
+		selectedDateYear.value = date.getFullYear()
+		selectedDateMonth.value = date.getMonth() + 1
+		selectedDateDay.value = Math.min(selectedDateDay.value, new Date(selectedDateYear.value, selectedDateMonth.value, 0).getDate())
+	}
+	const openDateSelector = () => {
+		const parts = formDate.value.split('-')
+		if (parts.length === 3) {
+			selectedDateYear.value = parseInt(parts[0])
+			selectedDateMonth.value = parseInt(parts[1])
+			selectedDateDay.value = parseInt(parts[2])
+		}
+		showDateSelector.value = true
+	}
+	const confirmDateSelector = () => {
+		formDate.value = `${selectedDateYear.value}-${`${selectedDateMonth.value}`.padStart(2, '0')}-${`${selectedDateDay.value}`.padStart(2, '0')}`
+		showDateSelector.value = false
+	}
+	const selectPaymentMethod = (methodId: number) => {
+		formPaymentMethodId.value = methodId
+		showPaymentSelector.value = false
 	}
 
 	const parseLabelIds = (labelIdList: string): number[] => {
@@ -437,11 +532,6 @@
 		return paymentMethods.value.map(method => method.name)
 	})
 
-	const selectedPaymentMethodIndex = computed(() => {
-		const index = paymentMethods.value.findIndex(method => method.id === formPaymentMethodId.value)
-		return index >= 0 ? index : 0
-	})
-
 	const selectedPaymentMethodName = computed(() => {
 		const method = paymentMethods.value.find(item => item.id === formPaymentMethodId.value)
 		return method != null ? method.name : '请选择支付方式'
@@ -469,6 +559,8 @@
 
 	const openAddModal = () => {
 		resetForm()
+		showPaymentSelector.value = false
+		showDateSelector.value = false
 		showLabelSelector.value = false
 		showAddLabelModal.value = false
 		showModal.value = true
@@ -505,6 +597,8 @@
 
 	const hideModal = () => {
 		showModal.value = false
+		showPaymentSelector.value = false
+		showDateSelector.value = false
 		showLabelSelector.value = false
 		showAddLabelModal.value = false
 		newLabelError.value = ''
@@ -645,16 +739,6 @@
 
 	const onTypeChange = (e: UTSJSONObject) => {
 		formType.value = getDetailStringValue(e) === 'income' ? 'income' : 'expense'
-	}
-
-	const onDateChange = (e: UTSJSONObject) => {
-		formDate.value = getDetailStringValue(e)
-	}
-
-	const onPaymentMethodChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e)
-		if (index < 0 || index >= paymentMethods.value.length) return
-		formPaymentMethodId.value = paymentMethods.value[index].id
 	}
 
 	const onRenewalPaymentMethodChange = (e: UTSJSONObject) => {
@@ -1472,6 +1556,93 @@
 		justify-content: center;
 	}
 
+	.date-modal-content {
+		width: 88%;
+		padding: 18px;
+	}
+
+	.payment-selector-body {
+		height: 210px;
+	}
+
+	.date-calendar-header {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.date-calendar-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #24323a;
+	}
+
+	.date-nav-btn {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		background-color: #f2ebe2;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.date-nav-text {
+		font-size: 24px;
+		color: #4d5b67;
+		line-height: 40px;
+	}
+
+	.date-week-row,
+	.date-grid {
+		flex-direction: row;
+	}
+
+	.date-week-row {
+		margin-bottom: 6px;
+	}
+
+	.date-grid {
+		flex-wrap: wrap;
+		margin-bottom: 14px;
+	}
+
+	.date-week-text,
+	.date-day {
+		width: 14.28%;
+		text-align: center;
+	}
+
+	.date-week-text {
+		font-size: 12px;
+		color: #8792a1;
+	}
+
+	.date-day {
+		height: 38px;
+		justify-content: center;
+		align-items: center;
+		border-radius: 19px;
+	}
+
+	.date-day.selected {
+		background-color: #1f7a72;
+	}
+
+	.date-day-text {
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.date-day-text.selected {
+		color: #fff;
+		font-weight: bold;
+	}
+
+	.date-day-text.muted {
+		color: #c3b8ad;
+	}
+
 	.error-tip {
 		font-size: 12px;
 		line-height: 1.5;
@@ -1605,6 +1776,10 @@
 		background-color: #f0e7dc;
 		color: #4d5b67;
 		margin-right: 10px;
+	}
+
+	.single-cancel-btn {
+		margin-right: 0;
 	}
 
 	.confirm-btn {

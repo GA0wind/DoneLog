@@ -152,14 +152,12 @@
 			</view>
 		</view>
 
-		<view class="modal" v-if="showLabelBudgetModal" @click="hideLabelBudgetModal">
+		<view class="modal" v-if="showLabelBudgetModal && !showBudgetLabelSelector" @click="hideLabelBudgetModal">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">设置标签预算</text>
 				<view class="form-item">
 					<text class="form-label">预算标签</text>
-					<picker mode="selector" :range="labels" range-key="name" :value="selectedBudgetLabelIndex" @change="onLabelBudgetChange">
-						<view class="picker"><text>{{selectedBudgetLabelName}}</text></view>
-					</picker>
+					<view class="picker" @click="showBudgetLabelSelector = true"><text>{{selectedBudgetLabelName}}</text></view>
 				</view>
 				<view class="form-item">
 					<text class="form-label">每月支出预算</text>
@@ -173,7 +171,20 @@
 			</view>
 		</view>
 
-		<view class="modal" v-if="showRenewalModal && !showRenewalLabelSelector" @click="hideRenewalModal">
+		<view class="modal" v-if="showBudgetLabelSelector" @click="showBudgetLabelSelector = false">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">选择预算标签</text>
+				<scroll-view direction="vertical" class="selector-body">
+					<view class="selector-item" :class="{ selected: selectedBudgetLabelId === label.id }" v-for="label in labels" :key="label.id" @click="selectBudgetLabel(label.id)">
+						<text class="selector-name">{{label.name}}</text>
+						<text class="selector-check" :class="{ visible: selectedBudgetLabelId === label.id }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer"><button class="cancel-btn single-cancel-btn" @click="showBudgetLabelSelector = false">取消</button></view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalModal && !showRenewalLabelSelector && !showRenewalPaymentSelector && !showRenewalDateSelector" @click="hideRenewalModal">
 			<view class="modal-content tall-modal-content" @click.stop>
 				<text class="modal-title">{{editingRenewalId > 0 ? '编辑自动续费' : '新增自动续费'}}</text>
 				<scroll-view direction="vertical" class="form-body">
@@ -187,15 +198,11 @@
 					</view>
 					<view class="form-item">
 						<text class="form-label">支付方式</text>
-						<picker mode="selector" :range="paymentMethodNames" :value="selectedRenewalPaymentMethodIndex" @change="onRenewalPaymentMethodChange">
-							<view class="picker"><text>{{selectedRenewalPaymentMethodName}}</text></view>
-						</picker>
+						<view class="picker" @click="showRenewalPaymentSelector = true"><text>{{selectedRenewalPaymentMethodName}}</text></view>
 					</view>
 					<view class="form-item">
 						<text class="form-label">下次扣款日期</text>
-						<picker mode="date" :value="renewalDate" @change="onRenewalDateChange">
-							<view class="picker"><text>{{renewalDate}}</text></view>
-						</picker>
+						<view class="picker" @click="openRenewalDateSelector"><text>{{renewalDate}}</text></view>
 					</view>
 					<view class="form-item">
 						<text class="form-label">标签</text>
@@ -216,6 +223,40 @@
 				<view class="modal-footer">
 					<button class="cancel-btn" @click.stop="hideRenewalModal">取消</button>
 					<button class="confirm-btn" @click.stop="saveRenewal">保存</button>
+				</view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalPaymentSelector" @click="showRenewalPaymentSelector = false">
+			<view class="modal-content" @click.stop>
+				<text class="modal-title">选择支付方式</text>
+				<scroll-view direction="vertical" class="selector-body payment-selector-body">
+					<view class="selector-item" :class="{ selected: renewalPaymentMethodId === method.id }" v-for="method in paymentMethods" :key="method.id" @click="selectRenewalPaymentMethod(method.id)">
+						<text class="selector-name">{{method.name}}</text>
+						<text class="selector-check" :class="{ visible: renewalPaymentMethodId === method.id }">✓</text>
+					</view>
+				</scroll-view>
+				<view class="modal-footer"><button class="cancel-btn single-cancel-btn" @click="showRenewalPaymentSelector = false">取消</button></view>
+			</view>
+		</view>
+
+		<view class="modal" v-if="showRenewalDateSelector" @click="showRenewalDateSelector = false">
+			<view class="modal-content date-modal-content" @click.stop>
+				<text class="modal-title">选择下次扣款日期</text>
+				<view class="date-calendar-header">
+					<view class="date-nav-btn" @click="changeRenewalDatePickerMonth(-1)"><text class="date-nav-text">‹</text></view>
+					<text class="date-calendar-title">{{selectedDateYear}} 年 {{selectedDateMonth}} 月</text>
+					<view class="date-nav-btn" @click="changeRenewalDatePickerMonth(1)"><text class="date-nav-text">›</text></view>
+				</view>
+				<view class="date-week-row"><text class="date-week-text" v-for="item in dateWeekdays" :key="item">{{item}}</text></view>
+				<view class="date-grid">
+					<view class="date-day" v-for="(item, index) in datePickerDays" :key="index" :class="{ selected: isSelectedDatePickerDay(item) }" @click="selectDatePickerDay(item)">
+						<text class="date-day-text" :class="{ selected: isSelectedDatePickerDay(item), muted: !item.isCurrentMonth }">{{item.day}}</text>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<button class="cancel-btn" @click="showRenewalDateSelector = false">取消</button>
+					<button class="confirm-btn" @click="confirmRenewalDateSelector">确定</button>
 				</view>
 			</view>
 		</view>
@@ -256,6 +297,13 @@
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AutoRenewal, Label, PaymentMethod } from '@/utils/storage.uts'
 
+	type AccountSettingsDatePickerDay = {
+		year: number
+		month: number
+		day: number
+		isCurrentMonth: boolean
+	}
+
 	const labels = ref<Label[]>([])
 	const paymentMethods = ref<PaymentMethod[]>([])
 	const autoRenewals = ref<AutoRenewal[]>([])
@@ -267,8 +315,11 @@
 	const showDeletePaymentMethodModal = ref(false)
 	const showBudgetModal = ref(false)
 	const showLabelBudgetModal = ref(false)
+	const showBudgetLabelSelector = ref(false)
 	const showRenewalModal = ref(false)
 	const showRenewalLabelSelector = ref(false)
+	const showRenewalPaymentSelector = ref(false)
+	const showRenewalDateSelector = ref(false)
 	const showDeleteRenewalModal = ref(false)
 
 	const editingPaymentMethodId = ref(0)
@@ -288,28 +339,14 @@
 	const renewalAmount = ref('')
 	const renewalPaymentMethodId = ref(1)
 	const renewalDate = ref('')
+	const selectedDateYear = ref(new Date().getFullYear())
+	const selectedDateMonth = ref(new Date().getMonth() + 1)
+	const selectedDateDay = ref(new Date().getDate())
+	const dateWeekdays = ['日', '一', '二', '三', '四', '五', '六']
 	const renewalLabelIds = ref<number[]>([])
 	const renewalRemark = ref('')
 	const pendingDeleteRenewalId = ref(0)
 	const pendingDeleteRenewalName = ref('')
-
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailStringValue = (e: UTSJSONObject): string => {
-		const detail = getDetailObject(e)
-		if (detail == null) return ''
-		const value = detail['value']
-		return value != null ? `${value}` : ''
-	}
-
-	const getDetailNumberValue = (e: UTSJSONObject): number => {
-		const value = getDetailStringValue(e)
-		const parsed = parseInt(value)
-		return Number.isNaN(parsed) ? 0 : parsed
-	}
 
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
@@ -317,6 +354,58 @@
 		const month = `${date.getMonth() + 1}`.padStart(2, '0')
 		const day = `${date.getDate()}`.padStart(2, '0')
 		return `${year}-${month}-${day}`
+	}
+
+	const createDatePickerDays = (year: number, month: number): AccountSettingsDatePickerDay[] => {
+		const days: AccountSettingsDatePickerDay[] = []
+		const firstWeekday = new Date(year, month - 1, 1).getDay()
+		const prevMonthLastDay = new Date(year, month - 1, 0).getDate()
+		const currentMonthLastDay = new Date(year, month, 0).getDate()
+		for (let i = firstWeekday - 1; i >= 0; i--) {
+			const date = new Date(year, month - 2, prevMonthLastDay - i)
+			days.push({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), isCurrentMonth: false })
+		}
+		for (let day = 1; day <= currentMonthLastDay; day++) {
+			days.push({ year, month, day, isCurrentMonth: true })
+		}
+		for (let day = 1; days.length < 42; day++) {
+			const date = new Date(year, month, day)
+			days.push({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), isCurrentMonth: false })
+		}
+		return days
+	}
+
+	const datePickerDays = computed(() => createDatePickerDays(selectedDateYear.value, selectedDateMonth.value))
+	const isSelectedDatePickerDay = (item: AccountSettingsDatePickerDay): boolean => {
+		return item.year === selectedDateYear.value && item.month === selectedDateMonth.value && item.day === selectedDateDay.value
+	}
+	const selectDatePickerDay = (item: AccountSettingsDatePickerDay) => {
+		selectedDateYear.value = item.year
+		selectedDateMonth.value = item.month
+		selectedDateDay.value = item.day
+	}
+	const changeRenewalDatePickerMonth = (offset: number) => {
+		const date = new Date(selectedDateYear.value, selectedDateMonth.value - 1 + offset, 1)
+		selectedDateYear.value = date.getFullYear()
+		selectedDateMonth.value = date.getMonth() + 1
+		selectedDateDay.value = Math.min(selectedDateDay.value, new Date(selectedDateYear.value, selectedDateMonth.value, 0).getDate())
+	}
+	const openRenewalDateSelector = () => {
+		const parts = renewalDate.value.split('-')
+		if (parts.length === 3) {
+			selectedDateYear.value = parseInt(parts[0])
+			selectedDateMonth.value = parseInt(parts[1])
+			selectedDateDay.value = parseInt(parts[2])
+		}
+		showRenewalDateSelector.value = true
+	}
+	const confirmRenewalDateSelector = () => {
+		renewalDate.value = `${selectedDateYear.value}-${`${selectedDateMonth.value}`.padStart(2, '0')}-${`${selectedDateDay.value}`.padStart(2, '0')}`
+		showRenewalDateSelector.value = false
+	}
+	const selectRenewalPaymentMethod = (methodId: number) => {
+		renewalPaymentMethodId.value = methodId
+		showRenewalPaymentSelector.value = false
 	}
 
 	const parseLabelIds = (labelIdList: string): number[] => {
@@ -352,21 +441,10 @@
 	const visibleLabelBudgetOverviews = computed<LabelBudgetOverview[]>(() => {
 		return labelBudgetOverviews.value.filter(item => item.monthlyBudget > 0)
 	})
-	const selectedBudgetLabelIndex = computed(() => {
-		const index = labels.value.findIndex(item => item.id === selectedBudgetLabelId.value)
-		return index >= 0 ? index : 0
-	})
 	const selectedBudgetLabelName = computed(() => {
 		if (labels.value.length === 0) return '暂无标签'
 		const label = labels.value.find(item => item.id === selectedBudgetLabelId.value)
 		return label != null ? label.name : labels.value[0].name
-	})
-	const paymentMethodNames = computed<string[]>(() => {
-		return paymentMethods.value.map(method => method.name)
-	})
-	const selectedRenewalPaymentMethodIndex = computed(() => {
-		const index = paymentMethods.value.findIndex(method => method.id === renewalPaymentMethodId.value)
-		return index >= 0 ? index : 0
 	})
 	const selectedRenewalPaymentMethodName = computed(() => {
 		const method = paymentMethods.value.find(item => item.id === renewalPaymentMethodId.value)
@@ -530,11 +608,13 @@
 			labelBudgetAmount.value = ''
 		}
 		labelBudgetError.value = ''
+		showBudgetLabelSelector.value = false
 		showLabelBudgetModal.value = true
 	}
 
 	const hideLabelBudgetModal = () => {
 		showLabelBudgetModal.value = false
+		showBudgetLabelSelector.value = false
 		labelBudgetError.value = ''
 	}
 
@@ -542,12 +622,11 @@
 		if (labelBudgetError.value.length > 0) labelBudgetError.value = ''
 	}
 
-	const onLabelBudgetChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e)
-		if (index < 0 || index >= labels.value.length) return
-		selectedBudgetLabelId.value = labels.value[index].id
+	const selectBudgetLabel = (labelId: number) => {
+		selectedBudgetLabelId.value = labelId
 		const amount = AccountManager.getLabelBudgetAmount(selectedBudgetLabelId.value)
 		labelBudgetAmount.value = amount > 0 ? `${amount}` : ''
+		showBudgetLabelSelector.value = false
 	}
 
 	const saveLabelBudget = () => {
@@ -596,6 +675,8 @@
 	const openRenewalModal = (renewal: AutoRenewal | null) => {
 		if (paymentMethods.value.length === 0) paymentMethods.value = AccountManager.getPaymentMethods()
 		showRenewalLabelSelector.value = false
+		showRenewalPaymentSelector.value = false
+		showRenewalDateSelector.value = false
 		if (renewal == null) {
 			resetRenewalForm()
 		} else {
@@ -613,16 +694,8 @@
 	const hideRenewalModal = () => {
 		showRenewalModal.value = false
 		showRenewalLabelSelector.value = false
-	}
-
-	const onRenewalPaymentMethodChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e)
-		if (index < 0 || index >= paymentMethods.value.length) return
-		renewalPaymentMethodId.value = paymentMethods.value[index].id
-	}
-
-	const onRenewalDateChange = (e: UTSJSONObject) => {
-		renewalDate.value = getDetailStringValue(e)
+		showRenewalPaymentSelector.value = false
+		showRenewalDateSelector.value = false
 	}
 
 	const toggleRenewalLabel = (labelId: number) => {
@@ -988,6 +1061,88 @@
 		padding-right: 8px;
 	}
 
+	.payment-selector-body {
+		height: 210px;
+	}
+
+	.date-calendar-header {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.date-calendar-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #24323a;
+	}
+
+	.date-nav-btn {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		background-color: #f2ebe2;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.date-nav-text {
+		font-size: 24px;
+		color: #4d5b67;
+		line-height: 40px;
+	}
+
+	.date-week-row,
+	.date-grid {
+		flex-direction: row;
+	}
+
+	.date-week-row {
+		margin-bottom: 6px;
+	}
+
+	.date-grid {
+		flex-wrap: wrap;
+		margin-bottom: 14px;
+	}
+
+	.date-week-text,
+	.date-day {
+		width: 14.28%;
+		text-align: center;
+	}
+
+	.date-week-text {
+		font-size: 12px;
+		color: #8792a1;
+	}
+
+	.date-day {
+		height: 38px;
+		justify-content: center;
+		align-items: center;
+		border-radius: 19px;
+	}
+
+	.date-day.selected {
+		background-color: #1f7a72;
+	}
+
+	.date-day-text {
+		font-size: 14px;
+		color: #24323a;
+	}
+
+	.date-day-text.selected {
+		color: #fff;
+		font-weight: bold;
+	}
+
+	.date-day-text.muted {
+		color: #c3b8ad;
+	}
+
 	.modal-title {
 		font-size: 18px;
 		font-weight: bold;
@@ -1140,6 +1295,10 @@
 		background-color: #f0e7dc;
 		color: #4d5b67;
 		margin-right: 10px;
+	}
+
+	.single-cancel-btn {
+		margin-right: 0;
 	}
 
 	.confirm-btn {
