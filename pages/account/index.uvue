@@ -99,8 +99,9 @@
 					<view class="form-item last-form-item">
 						<text class="label">描述</text>
 						<view class="textarea-shell">
-							<textarea class="textarea entry-remark-textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资、报销" />
+							<textarea class="textarea entry-remark-textarea" v-model="formRemark" placeholder="例如：午餐、打车、工资、报销" @input="onRemarkInput" />
 						</view>
+						<text class="ai-status" v-if="aiClassificationStatus.length > 0">{{aiClassificationStatus}}</text>
 					</view>
 				</scroll-view>
 
@@ -297,6 +298,7 @@
 <script setup lang="uts">
 	import { AccountManager, LabelBudgetOverview, AccountOverview } from '@/utils/accountManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
+	import { AccountAi } from '@/utils/accountAi.uts'
 	import { AccountEntry, AccountEntryInput, AutoRenewal, Label, PaymentMethod } from '@/utils/storage.uts'
 
 	type DatePickerDay = {
@@ -334,6 +336,10 @@
 	const selectedDateDay = ref(new Date().getDate())
 	const dateWeekdays = ['日', '一', '二', '三', '四', '五', '六']
 	const formRemark = ref('')
+	const aiClassificationStatus = ref('')
+	let aiRequestRevision = 0
+	let aiAssignedLabelId = 0
+	let manualLabelSelected = false
 	const editingRenewalId = ref(0)
 	const renewalName = ref('')
 	const renewalAmount = ref('')
@@ -548,6 +554,10 @@
 	})
 
 	const resetForm = () => {
+		aiRequestRevision++
+		aiAssignedLabelId = 0
+		manualLabelSelected = false
+		aiClassificationStatus.value = ''
 		editingId.value = 0
 		formType.value = 'expense'
 		formAmount.value = ''
@@ -567,10 +577,14 @@
 	}
 
 	const editEntry = (entry: AccountEntry) => {
+		aiRequestRevision++
+		aiAssignedLabelId = 0
+		aiClassificationStatus.value = ''
 		editingId.value = entry.id
 		formType.value = entry.type
 		formAmount.value = `${entry.amount}`
 		formLabelIds.value = parseLabelIds(entry.labelIdList)
+		manualLabelSelected = formLabelIds.value.length > 0
 		formPaymentMethodId.value = entry.paymentMethodId
 		formDate.value = formatDate(entry.occurredAt)
 		formRemark.value = entry.remark
@@ -596,6 +610,7 @@
 	}
 
 	const hideModal = () => {
+		aiRequestRevision++
 		showModal.value = false
 		showPaymentSelector.value = false
 		showDateSelector.value = false
@@ -737,8 +752,50 @@
 		}
 	}
 
+	const scheduleAiClassification = (remark: string) => {
+		const revision = ++aiRequestRevision
+		if (aiAssignedLabelId > 0 && formLabelIds.value.includes(aiAssignedLabelId)) formLabelIds.value = []
+		aiAssignedLabelId = 0
+		if (manualLabelSelected) {
+			aiClassificationStatus.value = '已手动选择标签'
+			return
+		}
+		const text = remark.trim()
+		if (text.length < 2) {
+			aiClassificationStatus.value = ''
+			return
+		}
+		if (AccountAi.getApiKey().length === 0) {
+			aiClassificationStatus.value = '请先在记账设置中填写 AI 密钥'
+			return
+		}
+		aiClassificationStatus.value = 'AI 即将识别分类…'
+		setTimeout(() => {
+			if (revision !== aiRequestRevision || !showModal.value || manualLabelSelected || formRemark.value.trim() !== text) return
+			const entryType = formType.value
+			aiClassificationStatus.value = 'AI 正在识别分类…'
+			AccountAi.classify(text, entryType, labels.value, (labelId: number, error: string) => {
+				if (revision !== aiRequestRevision || !showModal.value || manualLabelSelected || formRemark.value.trim() !== text || formType.value !== entryType) return
+				if (labelId > 0) {
+					formLabelIds.value = [labelId]
+					aiAssignedLabelId = labelId
+					const selected = labels.value.find(label => label.id === labelId)
+					aiClassificationStatus.value = selected != null ? `AI 已选择：${selected.name}，可手动修改` : ''
+				} else {
+					aiClassificationStatus.value = error
+				}
+			})
+		}, 900)
+	}
+
+	const onRemarkInput = (e: UniInputEvent) => {
+		formRemark.value = e.detail.value
+		scheduleAiClassification(e.detail.value)
+	}
+
 	const onTypeChange = (e: UTSJSONObject) => {
 		formType.value = getDetailStringValue(e) === 'income' ? 'income' : 'expense'
+		if (formRemark.value.trim().length >= 2 && !manualLabelSelected) scheduleAiClassification(formRemark.value)
 	}
 
 	const onRenewalPaymentMethodChange = (e: UTSJSONObject) => {
@@ -752,6 +809,10 @@
 	}
 
 	const toggleFormLabel = (labelId: number) => {
+		aiRequestRevision++
+		aiAssignedLabelId = 0
+		manualLabelSelected = true
+		aiClassificationStatus.value = '已手动选择标签'
 		formLabelIds.value = formLabelIds.value.includes(labelId) ? [] : [labelId]
 	}
 
@@ -868,6 +929,9 @@
 
 		const existingLabel = LabelManager.getLabelByName(createdName, 'account')
 		if (existingLabel != null) {
+			aiRequestRevision++
+			manualLabelSelected = true
+			aiClassificationStatus.value = '已手动选择标签'
 			formLabelIds.value = [existingLabel.id]
 			newLabelError.value = '已存在同名标签，已为你选中'
 			uni.showToast({ title: '标签已存在，已选中', icon: 'none' })
@@ -883,7 +947,12 @@
 
 		labels.value = LabelManager.getSortedLabels('account')
 		const created = labels.value.find(item => item.name === createdName)
-		if (created != null) formLabelIds.value = [created.id]
+		if (created != null) {
+			aiRequestRevision++
+			manualLabelSelected = true
+			aiClassificationStatus.value = '已手动选择标签'
+			formLabelIds.value = [created.id]
+		}
 		newLabelName.value = ''
 		newLabelError.value = ''
 		newLabelColor.value = '#1F7A72'
@@ -1647,6 +1716,13 @@
 		font-size: 12px;
 		line-height: 1.5;
 		color: #e07a5f;
+		margin-top: 6px;
+	}
+
+	.ai-status {
+		font-size: 12px;
+		line-height: 1.5;
+		color: #1f7a72;
 		margin-top: 6px;
 	}
 
