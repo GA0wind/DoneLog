@@ -41,8 +41,13 @@
 
 		<view class="quick-row">
 			<text class="quick-count">当前 {{filteredEvents.length}} 个</text>
-			<view class="quick-manage-btn" @click="goToEventLabels">
-				<text class="quick-manage-text">标签管理</text>
+			<view class="quick-actions">
+				<view class="quick-manage-btn shift-btn" @click="goToShifts">
+					<text class="quick-manage-text">班次提醒</text>
+				</view>
+				<view class="quick-manage-btn" @click="goToEventLabels">
+					<text class="quick-manage-text">标签管理</text>
+				</view>
 			</view>
 		</view>
 
@@ -458,6 +463,10 @@
 		})
 	}
 
+	const goToShifts = () => {
+		uni.navigateTo({ url: '/pages/shift/index' })
+	}
+
 	// 跳转到详情页面
 	const goToDetail = (eventId: number) => {
 		uni.navigateTo({
@@ -629,6 +638,9 @@
 		justify-content: space-between;
 		margin: 0 14px 8px;
 	}
+
+	.quick-actions { flex-direction: row; }
+	.shift-btn { margin-right: 8px; }
 
 	.quick-manage-btn {
 		height: 30px;

@@ -5,7 +5,10 @@ import {
 	refreshWidget as androidRefreshWidget,
 	requestEventNotificationPermission as androidRequestEventNotificationPermission,
 	scheduleEventNotifications as androidScheduleEventNotifications,
-	cancelEventNotifications as androidCancelEventNotifications
+	cancelEventNotifications as androidCancelEventNotifications,
+	scheduleShiftNotifications as androidScheduleShiftNotifications,
+	canScheduleShiftExactAlarm as androidCanScheduleShiftExactAlarm,
+	openShiftExactAlarmSettings as androidOpenShiftExactAlarmSettings
 } from './app-android/index.uts'
 // #endif
 
@@ -43,5 +46,24 @@ export function scheduleEventNotifications(payload: string): void {
 export function cancelEventNotifications(): void {
 	// #ifdef APP-ANDROID
 	androidCancelEventNotifications()
+	// #endif
+}
+
+export function scheduleShiftNotifications(payload: string): void {
+	// #ifdef APP-ANDROID
+	androidScheduleShiftNotifications(payload)
+	// #endif
+}
+
+export function canScheduleShiftExactAlarm(): boolean {
+	// #ifdef APP-ANDROID
+	return androidCanScheduleShiftExactAlarm()
+	// #endif
+	return true
+}
+
+export function openShiftExactAlarmSettings(): void {
+	// #ifdef APP-ANDROID
+	androidOpenShiftExactAlarmSettings()
 	// #endif
 }

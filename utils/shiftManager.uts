@@ -1,0 +1,67 @@
+import { ShiftReminder, StorageUtils } from './storage.uts'
+import { scheduleShiftNotifications } from '@/uni_modules/donelogWidget/utssdk'
+
+export class ShiftManager {
+  static getUpcoming(): ShiftReminder[] {
+    return StorageUtils.getShifts()
+      .filter(item => item.shiftAt > Date.now())
+      .sort((a, b) => a.shiftAt - b.shiftAt)
+  }
+
+  static save(name: string, shiftAt: number, id: number = 0): boolean {
+    const trimmedName = name.trim()
+    if (trimmedName.length === 0 || shiftAt <= Date.now()) {
+      return false
+    }
+
+    const shifts = StorageUtils.getShifts()
+    const now = Date.now()
+    if (id > 0) {
+      const index = shifts.findIndex(item => item.id == id)
+      if (index < 0) {
+        return false
+      }
+      shifts[index].name = trimmedName
+      shifts[index].shiftAt = shiftAt
+      shifts[index].updateTime = now
+    } else {
+      let nextId = 1
+      shifts.forEach(item => {
+        if (item.id >= nextId) {
+          nextId = item.id + 1
+        }
+      })
+      shifts.push({ id: nextId, name: trimmedName, shiftAt, createTime: now, updateTime: now })
+    }
+
+    if (!StorageUtils.saveShifts(shifts)) {
+      return false
+    }
+    this.syncNotifications()
+    return true
+  }
+
+  static remove(id: number): boolean {
+    const shifts = StorageUtils.getShifts()
+    const remaining = shifts.filter(item => item.id != id)
+    if (remaining.length === shifts.length || !StorageUtils.saveShifts(remaining)) {
+      return false
+    }
+    this.syncNotifications()
+    return true
+  }
+
+  static cleanupExpired(): void {
+    const shifts = StorageUtils.getShifts()
+    const now = Date.now()
+    const upcoming = shifts.filter(item => item.shiftAt > now)
+    if (upcoming.length !== shifts.length) {
+      StorageUtils.saveShifts(upcoming)
+    }
+    this.syncNotifications()
+  }
+
+  static syncNotifications(): void {
+    scheduleShiftNotifications(JSON.stringify(this.getUpcoming()))
+  }
+}

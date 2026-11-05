@@ -31,6 +31,12 @@
 			}
 		},
 		{
+			"path": "pages/shift/index",
+			"style": {
+				"navigationBarTitleText": "班次提醒"
+			}
+		},
+		{
 			"path": "pages/account/index",
 			"style": {
 				"navigationBarTitleText": "记账"

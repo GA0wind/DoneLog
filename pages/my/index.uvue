@@ -125,6 +125,7 @@
 	import { EventManager, EventLabelStats, StatsPeriod } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager, AccountOverview } from '@/utils/accountManager.uts'
+	import { ShiftManager } from '@/utils/shiftManager.uts'
 	import { StorageUtils, Label } from '@/utils/storage.uts'
 
 	EventManager.initIds()
@@ -213,6 +214,7 @@
 		EventManager.initIds()
 		LabelManager.initIds()
 		AccountManager.initIds()
+		ShiftManager.cleanupExpired()
 		hideImportDialog()
 		loadData()
 		uni.showToast({ title: '导入成功', icon: 'success' })

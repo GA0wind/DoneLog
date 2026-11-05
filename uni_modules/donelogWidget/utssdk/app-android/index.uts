@@ -18,17 +18,22 @@ import ComponentName from 'android.content.ComponentName'
 import RemoteViews from 'android.widget.RemoteViews'
 import View from 'android.view.View'
 import ActivityCompat from 'androidx.core.app.ActivityCompat'
+import Settings from 'android.provider.Settings'
+import Uri from 'android.net.Uri'
 
 const PREF_NAME = 'donelog_widget_pref'
 const SNAPSHOT_KEY = 'snapshot'
 const PENDING_ACTION_KEY = 'pending_action'
 const NOTIFICATION_SCHEDULES_KEY = 'notification_schedules'
+const SHIFT_SCHEDULES_KEY = 'shift_notification_schedules'
+const SHIFT_ALARM_ACTION = 'donelog.shift.alarm'
 const WIDGET_PROVIDER_CLASS = 'uts.sdk.modules.donelogWidget.DoneLogWidgetProvider'
 const NOTIFICATION_RECEIVER_CLASS = 'uts.sdk.modules.donelogWidget.EventNotificationReceiver'
 const NOTIFICATION_CHANNEL_ID = 'donelog_event_reminders'
 const NOTIFICATION_CHANNEL_NAME = '事件提醒'
 const NOTIFICATION_PERMISSION_REQUEST_CODE: Int = 2601
 const NOTIFICATION_REQUEST_CODE_BASE: Int = 32000
+const SHIFT_REQUEST_CODE_BASE: Int = 132000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 type WidgetItem = {
@@ -55,6 +60,12 @@ type NotificationSchedule = {
 	name: string
 	notifyTime: string
 	nextNotifyAt: number
+}
+
+type ShiftNotificationSchedule = {
+	id: number
+	name: string
+	shiftAt: number
 }
 
 function getPrefs(context: Context) {
@@ -160,6 +171,40 @@ function buildAlarmIntent(context: Context, eventId: Int): PendingIntent {
 	)
 }
 
+function buildShiftAlarmIntent(context: Context, shiftId: Int): PendingIntent {
+	const intent = new Intent()
+	intent.setClassName(context, NOTIFICATION_RECEIVER_CLASS)
+	intent.setAction(SHIFT_ALARM_ACTION)
+	intent.putExtra('shiftId', shiftId)
+	return PendingIntent.getBroadcast(
+		context,
+		(SHIFT_REQUEST_CODE_BASE + shiftId).toInt(),
+		intent,
+		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+	)
+}
+
+function parseShiftSchedules(payload: string): ShiftNotificationSchedule[] {
+	if (payload.length === 0) {
+		return []
+	}
+	try {
+		const parsed = JSON.parseArray<ShiftNotificationSchedule>(payload)
+		return parsed != null ? parsed : []
+	} catch (e) {
+		return []
+	}
+}
+
+function getStoredShiftSchedules(context: Context): ShiftNotificationSchedule[] {
+	const stored = getPrefs(context).getString(SHIFT_SCHEDULES_KEY, '')
+	return parseShiftSchedules(stored == null ? '' : stored)
+}
+
+function saveStoredShiftSchedules(context: Context, schedules: ShiftNotificationSchedule[]): void {
+	getPrefs(context).edit().putString(SHIFT_SCHEDULES_KEY, JSON.stringify(schedules)).apply()
+}
+
 function parseSchedules(payload: string): NotificationSchedule[] {
 	if (payload.length === 0) {
 		return []
@@ -219,6 +264,32 @@ function showEventNotification(context: Context, schedule: NotificationSchedule)
 	notificationManager.notify((NOTIFICATION_REQUEST_CODE_BASE + schedule.id.toInt()).toInt(), builder.build())
 }
 
+function showShiftNotification(context: Context, schedule: ShiftNotificationSchedule): void {
+	if (!hasNotificationPermission(context)) {
+		return
+	}
+	createReminderChannel(context)
+	const builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+		? new Notification.Builder(context, NOTIFICATION_CHANNEL_ID)
+		: new Notification.Builder(context)
+	const intent = new Intent()
+	intent.setClassName(context, 'uts.sdk.modules.donelogWidget.WidgetActionBridgeActivity')
+	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+	const contentIntent = PendingIntent.getActivity(
+		context,
+		(SHIFT_REQUEST_CODE_BASE + schedule.id.toInt()).toInt(),
+		intent,
+		PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+	)
+	builder.setSmallIcon(context.getApplicationInfo().icon)
+	builder.setContentTitle('做完记 班次提醒')
+	builder.setContentText(`班次开始：${schedule.name}`)
+	builder.setAutoCancel(true)
+	builder.setContentIntent(contentIntent)
+	const notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+	notificationManager.notify((SHIFT_REQUEST_CODE_BASE + schedule.id.toInt()).toInt(), builder.build())
+}
+
 function getNextDailyNotifyAt(notifyTime: string): number {
 	const parts = notifyTime.split(':')
 	const hour = parts.length > 0 ? parseInt(parts[0]) : 9
@@ -243,27 +314,36 @@ function updateScheduleAfterFire(context: Context, schedule: NotificationSchedul
 	scheduleAlarm(context, schedules[index])
 }
 
-function scheduleAlarm(context: Context, schedule: NotificationSchedule): void {
+function scheduleAlarmAt(context: Context, triggerAt: number, pendingIntent: PendingIntent): void {
 	const alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-	const pendingIntent = buildAlarmIntent(context, schedule.id.toInt())
-	const triggerAt = schedule.nextNotifyAt.toLong()
+	const triggerAtLong = triggerAt.toLong()
 
 	try {
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms() == false) {
-			alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtLong, pendingIntent)
 			return
 		}
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-			alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtLong, pendingIntent)
 			return
 		}
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-			alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+			alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtLong, pendingIntent)
 			return
 		}
-		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtLong, pendingIntent)
 	} catch (e) {
-		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+		alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtLong, pendingIntent)
+	}
+}
+
+function scheduleAlarm(context: Context, schedule: NotificationSchedule): void {
+	scheduleAlarmAt(context, schedule.nextNotifyAt, buildAlarmIntent(context, schedule.id.toInt()))
+}
+
+function scheduleShiftAlarm(context: Context, schedule: ShiftNotificationSchedule): void {
+	if (schedule.shiftAt > Date.now()) {
+		scheduleAlarmAt(context, schedule.shiftAt, buildShiftAlarmIntent(context, schedule.id.toInt()))
 	}
 }
 
@@ -276,6 +356,13 @@ function scheduleStoredNotifications(context: Context): void {
 	const schedules = getStoredSchedules(context)
 	for (let i = 0; i < schedules.length; i++) {
 		scheduleAlarm(context, schedules[i])
+	}
+}
+
+function scheduleStoredShiftNotifications(context: Context): void {
+	const schedules = getStoredShiftSchedules(context)
+	for (let i = 0; i < schedules.length; i++) {
+		scheduleShiftAlarm(context, schedules[i])
 	}
 }
 
@@ -403,6 +490,38 @@ export function cancelEventNotifications(): void {
 	getPrefs(context).edit().remove(NOTIFICATION_SCHEDULES_KEY).apply()
 }
 
+export function scheduleShiftNotifications(payload: string): void {
+	const context = getAvailableContext()
+	if (context == null) {
+		return
+	}
+	const oldSchedules = getStoredShiftSchedules(context)
+	const alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+	for (let i = 0; i < oldSchedules.length; i++) {
+		alarmManager.cancel(buildShiftAlarmIntent(context, oldSchedules[i].id.toInt()))
+	}
+	const schedules = parseShiftSchedules(payload)
+	saveStoredShiftSchedules(context, schedules)
+	for (let i = 0; i < schedules.length; i++) {
+		scheduleShiftAlarm(context, schedules[i])
+	}
+}
+
+export function canScheduleShiftExactAlarm(): boolean {
+	const context = getAvailableContext()
+	if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+	const alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+	return alarmManager.canScheduleExactAlarms()
+}
+
+export function openShiftExactAlarmSettings(): void {
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null || canScheduleShiftExactAlarm()) return
+	const intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+	intent.setData(Uri.parse(`package:${activity.getPackageName()}`))
+	activity.startActivity(intent)
+}
+
 export class DoneLogWidgetProvider extends AppWidgetProvider {
 	override onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray): void {
 		super.onUpdate(context, appWidgetManager, appWidgetIds)
@@ -439,6 +558,17 @@ export class EventNotificationReceiver extends BroadcastReceiver {
 		const action = intent.getAction()
 		if (action === Intent.ACTION_BOOT_COMPLETED) {
 			scheduleStoredNotifications(context)
+			scheduleStoredShiftNotifications(context)
+			return
+		}
+		if (action === SHIFT_ALARM_ACTION) {
+			const shiftId = intent.getIntExtra('shiftId', 0)
+			const schedules = getStoredShiftSchedules(context)
+			const schedule = schedules.find(item => item.id == shiftId)
+			if (schedule != null) {
+				showShiftNotification(context, schedule)
+				saveStoredShiftSchedules(context, schedules.filter(item => item.id != shiftId))
+			}
 			return
 		}
 

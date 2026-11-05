@@ -1,0 +1,144 @@
+<template>
+	<scroll-view direction="vertical" style="flex: 1" class="container">
+		<view class="panel">
+			<text class="title">{{editingId > 0 ? '修改班次' : '新增班次'}}</text>
+			<text class="hint">班次开始时提醒一次；过期班次自动清理。表格导入将在确认样例后加入。</text>
+			<view v-if="!exactAlarmAllowed" class="permission-row">
+				<text class="hint">系统尚未允许精确闹钟，提醒可能延迟。</text>
+				<text class="action-text" @click="openExactAlarmSettings">开启精确提醒</text>
+			</view>
+			<text class="label">班次名称</text>
+			<input class="input" v-model="shiftName" placeholder="例如：早班" />
+			<text class="label">班次日期（年-月-日）</text>
+			<input class="input" v-model="shiftDate" placeholder="例如：2026-11-06" />
+			<text class="label">开始与提醒时间（时:分）</text>
+			<input class="input" v-model="shiftTime" placeholder="例如：09:00" />
+			<view class="actions">
+				<button class="save-button" @click="saveShift">{{editingId > 0 ? '保存修改' : '添加班次'}}</button>
+				<button v-if="editingId > 0" class="cancel-button" @click="resetForm">取消修改</button>
+			</view>
+		</view>
+
+		<view class="panel">
+			<text class="title">即将到来的班次</text>
+			<text class="hint" v-if="shifts.length === 0">暂无班次，先添加一个。</text>
+			<view class="shift-row" v-for="shift in shifts" :key="shift.id">
+				<view class="shift-info">
+					<text class="shift-name">{{shift.name}}</text>
+					<text class="shift-time">{{formatShiftAt(shift.shiftAt)}}</text>
+				</view>
+				<text class="action-text" @click="editShift(shift)">修改</text>
+				<text class="action-text delete-text" @click="deleteShift(shift.id)">{{confirmDeleteId == shift.id ? '确认删除' : '删除'}}</text>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { ShiftReminder } from '@/utils/storage.uts'
+	import { ShiftManager } from '@/utils/shiftManager.uts'
+	import { requestEventNotificationPermission, canScheduleShiftExactAlarm, openShiftExactAlarmSettings } from '@/uni_modules/donelogWidget/utssdk'
+
+	const today = new Date()
+	const formatDate = (date: Date): string => {
+		return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
+	}
+	const shiftName = ref('')
+	const shiftDate = ref(formatDate(today))
+	const shiftTime = ref('09:00')
+	const editingId = ref(0)
+	const confirmDeleteId = ref(0)
+	const exactAlarmAllowed = ref(true)
+	const shifts = ref<ShiftReminder[]>([])
+
+	const parseShiftAt = (): number => {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate.value) || !/^\d{2}:\d{2}$/.test(shiftTime.value)) return 0
+		const dateParts = shiftDate.value.split('-')
+		const timeParts = shiftTime.value.split(':')
+		if (dateParts.length !== 3 || timeParts.length !== 2) return 0
+		const year = parseInt(dateParts[0])
+		const month = parseInt(dateParts[1])
+		const day = parseInt(dateParts[2])
+		const hour = parseInt(timeParts[0])
+		const minute = parseInt(timeParts[1])
+		if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day) || Number.isNaN(hour) || Number.isNaN(minute)) return 0
+		const date = new Date(year, month - 1, day, hour, minute)
+		if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day || date.getHours() !== hour || date.getMinutes() !== minute) return 0
+		return date.getTime()
+	}
+	const formatShiftAt = (timestamp: number): string => {
+		const date = new Date(timestamp)
+		return `${formatDate(date)} ${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`
+	}
+	const resetForm = () => {
+		editingId.value = 0
+		confirmDeleteId.value = 0
+		shiftName.value = ''
+		shiftDate.value = formatDate(new Date())
+		shiftTime.value = '09:00'
+	}
+	const loadShifts = () => {
+		ShiftManager.cleanupExpired()
+		shifts.value = ShiftManager.getUpcoming()
+	}
+	const saveShift = () => {
+		const shiftAt = parseShiftAt()
+		if (shiftName.value.trim().length === 0 || shiftAt <= Date.now()) {
+			uni.showToast({ title: '请填写名称和未来的班次时间', icon: 'none' })
+			return
+		}
+		requestEventNotificationPermission()
+		if (!ShiftManager.save(shiftName.value, shiftAt, editingId.value)) {
+			uni.showToast({ title: '保存失败', icon: 'none' })
+			return
+		}
+		resetForm()
+		loadShifts()
+		uni.showToast({ title: '已保存', icon: 'success' })
+	}
+	const editShift = (shift: ShiftReminder) => {
+		confirmDeleteId.value = 0
+		editingId.value = shift.id
+		shiftName.value = shift.name
+		const date = new Date(shift.shiftAt)
+		shiftDate.value = formatDate(date)
+		shiftTime.value = `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`
+	}
+	const deleteShift = (id: number) => {
+		if (confirmDeleteId.value != id) {
+			confirmDeleteId.value = id
+			return
+		}
+		confirmDeleteId.value = 0
+		if (ShiftManager.remove(id)) {
+			if (editingId.value == id) resetForm()
+			loadShifts()
+		} else {
+			uni.showToast({ title: '删除失败', icon: 'none' })
+		}
+	}
+	const openExactAlarmSettings = () => { openShiftExactAlarmSettings() }
+	onShow(() => {
+		loadShifts()
+		exactAlarmAllowed.value = canScheduleShiftExactAlarm()
+	})
+</script>
+
+<style>
+	.container { flex: 1; background-color: #f4efe7; padding: 16px; }
+	.panel { background-color: #fffaf3; border-radius: 20px; padding: 18px; margin-bottom: 16px; }
+	.title { font-size: 20px; font-weight: bold; color: #24323a; margin-bottom: 10px; }
+	.hint { font-size: 13px; color: #6c7780; line-height: 1.5; margin-bottom: 14px; }
+	.label { font-size: 14px; color: #24323a; margin-top: 12px; margin-bottom: 6px; }
+	.input { min-height: 44px; border-width: 1px; border-style: solid; border-color: #eadfd2; border-radius: 12px; padding: 10px; background-color: #fff; font-size: 15px; }
+	.actions { margin-top: 20px; }
+	.save-button { background-color: #1f7a72; color: #fff; border-radius: 12px; }
+	.cancel-button { margin-top: 8px; background-color: #e9e1d6; color: #24323a; border-radius: 12px; }
+	.shift-row { flex-direction: row; align-items: center; border-top-width: 1px; border-top-style: solid; border-top-color: #eadfd2; padding-top: 12px; padding-bottom: 12px; }
+	.shift-info { flex: 1; }
+	.shift-name { font-size: 16px; color: #24323a; font-weight: bold; }
+	.shift-time { font-size: 13px; color: #6c7780; margin-top: 4px; }
+	.action-text { font-size: 14px; color: #1f7a72; margin-left: 14px; }
+	.delete-text { color: #c0574b; }
+	.permission-row { margin-bottom: 8px; }
+</style>

@@ -1,5 +1,6 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
+	import { ShiftManager } from '@/utils/shiftManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager } from '@/utils/accountManager.uts'
 	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
@@ -85,6 +86,7 @@
 		LabelManager.initIds()
 		AccountManager.initIds()
 		EventManager.syncEventNotifications()
+		ShiftManager.cleanupExpired()
 		saveTodayWidgetSnapshot()
 	})
 
@@ -92,6 +94,7 @@
 		console.log('App Show')
 		AccountManager.processDueAutoRenewals()
 		EventManager.syncEventNotifications()
+		ShiftManager.cleanupExpired()
 		saveTodayWidgetSnapshot()
 		handlePendingWidgetAction()
 	})

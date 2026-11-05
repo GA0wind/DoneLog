@@ -38,6 +38,7 @@ type BackupPayload = {
   accountEntries: AccountEntry[]
   paymentMethods?: PaymentMethod[]
   autoRenewals?: AutoRenewal[]
+  shifts?: ShiftReminder[]
   budgetSettings: BudgetSettings
   appMeta: AppMeta
 }
@@ -54,6 +55,7 @@ export class StorageUtils {
   static readonly ACCOUNT_ENTRIES_KEY = 'donelog_account_entries'
   static readonly PAYMENT_METHODS_KEY = 'donelog_payment_methods'
   static readonly AUTO_RENEWALS_KEY = 'donelog_auto_renewals'
+  static readonly SHIFTS_KEY = 'donelog_shift_reminders'
   static readonly BUDGET_SETTINGS_KEY = 'donelog_budget_settings'
   static readonly LEGACY_LABELS_KEY = 'donelog_labels'
   static readonly APP_META_KEY = 'donelog_app_meta'
@@ -104,6 +106,30 @@ export class StorageUtils {
       return true
     } catch (e) {
       console.error('保存事件列表失败', e)
+      return false
+    }
+  }
+
+  static getShifts(): ShiftReminder[] {
+    try {
+      const data = uni.getStorageSync(this.SHIFTS_KEY)
+      if (typeof data !== 'string' || data.length === 0) {
+        return []
+      }
+      const parsed = JSON.parseArray<ShiftReminder>(data)
+      return parsed != null ? parsed : []
+    } catch (e) {
+      console.error('获取班次提醒失败', e)
+      return []
+    }
+  }
+
+  static saveShifts(shifts: ShiftReminder[]): boolean {
+    try {
+      uni.setStorageSync(this.SHIFTS_KEY, JSON.stringify(shifts))
+      return true
+    } catch (e) {
+      console.error('保存班次提醒失败', e)
       return false
     }
   }
@@ -465,6 +491,7 @@ export class StorageUtils {
       accountEntries: this.getAccountEntries(),
       paymentMethods: this.getPaymentMethods(),
       autoRenewals: this.getAutoRenewals(),
+      shifts: this.getShifts(),
       budgetSettings: this.getBudgetSettings(),
       appMeta: this.getAppMeta()
     })
@@ -495,7 +522,7 @@ export class StorageUtils {
         this.EVENTS_KEY, this.COMPLETION_RECORDS_KEY, this.EVENT_LABELS_KEY,
         this.ACCOUNT_LABELS_KEY, this.ACCOUNT_ENTRIES_KEY, this.PAYMENT_METHODS_KEY,
         this.AUTO_RENEWALS_KEY, this.BUDGET_SETTINGS_KEY,
-        this.APP_META_KEY
+        this.APP_META_KEY, this.SHIFTS_KEY
       ]
       const originalValues = keys.map((key): string => {
         const value = uni.getStorageSync(key)
@@ -509,6 +536,7 @@ export class StorageUtils {
         && this.saveAccountEntries(parsed.accountEntries)
         && this.savePaymentMethods(parsed.paymentMethods != null ? parsed.paymentMethods : this.getDefaultPaymentMethods())
         && this.saveAutoRenewals(parsed.autoRenewals != null ? parsed.autoRenewals : [])
+        && this.saveShifts(parsed.shifts != null ? parsed.shifts : [])
         && this.saveBudgetSettings(budgetSettings)
         && this.saveAppMeta(appMeta)
       if (!success) {
@@ -543,6 +571,14 @@ export type Event = {
   terminatedAt: number
   notifyEnabled: boolean
   notifyTime: string
+  createTime: number
+  updateTime: number
+}
+
+export type ShiftReminder = {
+  id: number
+  name: string
+  shiftAt: number
   createTime: number
   updateTime: number
 }
