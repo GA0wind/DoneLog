@@ -373,25 +373,11 @@ type AppMeta = {
 
 输出 `unpackage/release/apk/DoneLog-1.0.0-local-debug.apk`。环境、签名和 Release 说明见 [本地打包指南](docs/ANDROID-LOCAL-BUILD.md)，本轮模拟器验证见 [测试记录](docs/ANDROID-QA-2026-11-05.md)。
 
-### 另一套本地原生工程脚本
+### 仓库与本地依赖
 
-仓库根目录提供了脚本：[build-local.ps1](build-local.ps1)
+仓库保留业务源码、`uni_modules/donelogWidget`、静态资源、文档和 `scripts/` 中的构建配置。离线 SDK、Gradle 与生成的原生工程由构建脚本准备到 `unpackage/`，无需提交。
 
-完整打包：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-local.ps1
-```
-
-仅重打包已有原生工程：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -BuildOnly
-```
-
-默认输出：
-
-- `local-native-sdk/uniappxnativepackage/app/build/outputs/apk/debug/app-debug.apk`
+旧的 `local-native-sdk/`、`_vendor/`、`build-local.ps1`、IDE 配置和临时打包日志均已忽略；如本机仍保留这些文件，不影响当前构建。统一使用上面的 `scripts/Build-Android.ps1`。
 
 ## 业务规则
 
