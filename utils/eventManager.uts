@@ -1,4 +1,4 @@
-import { StorageUtils, Event, EventInput, CompletionRecord } from './storage.uts'
+import { StorageUtils, Event, EventInput, CompletionRecord, RepeatUnit } from './storage.uts'
 import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget'
 
 export type StatsPeriod = 'week' | 'month'
@@ -85,12 +85,27 @@ export class EventManager {
 
     if (event.intervalDays > 0) {
       const baseTime = lastCompleteDate != null ? lastCompleteDate : event.createTime
-      return this.getStartOfDay(baseTime) + (event.intervalDays + 1) * this.oneDay
+      const baseDateStart = this.getStartOfDay(baseTime)
+      const repeatUnit = event.repeatUnit
+      if (repeatUnit == 'month') {
+        return this.addMonths(baseDateStart, event.intervalDays)
+      }
+      if (repeatUnit == 'year') {
+        return this.addYears(baseDateStart, event.intervalDays)
+      }
+      return baseDateStart + (event.intervalDays + 1) * this.oneDay
     }
 
     if (event.intervalDays == 0) {
       const baseTime = lastCompleteDate != null ? lastCompleteDate : event.createTime
-      return this.getStartOfDay(baseTime) + this.oneDay
+      const baseDateStart = this.getStartOfDay(baseTime)
+      if (event.repeatUnit == 'month') {
+        return this.addMonths(baseDateStart, 1)
+      }
+      if (event.repeatUnit == 'year') {
+        return this.addYears(baseDateStart, 1)
+      }
+      return baseDateStart + this.oneDay
     }
 
     if (event.intervalDays < 0 && !event.isTerminated) {
@@ -292,6 +307,7 @@ export class EventManager {
       name: event.name,
       labelIdList: event.labelIdList,
       intervalDays: event.intervalDays,
+      repeatUnit: event.repeatUnit,
       nextDueDate: event.nextDueDate,
       remark: event.remark,
       isTerminated: event.isTerminated,
@@ -317,6 +333,7 @@ export class EventManager {
       name: `${source.name} 副本`,
       labelIdList: source.labelIdList,
       intervalDays: source.intervalDays,
+      repeatUnit: source.repeatUnit,
       nextDueDate: source.nextDueDate,
       remark: source.remark,
       isTerminated: false,
@@ -526,6 +543,16 @@ export class EventManager {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
   }
 
+  private static addMonths(timestamp: number, months: number): number {
+    const date = new Date(timestamp)
+    return new Date(date.getFullYear(), date.getMonth() + months, date.getDate()).getTime()
+  }
+
+  private static addYears(timestamp: number, years: number): number {
+    const date = new Date(timestamp)
+    return new Date(date.getFullYear() + years, date.getMonth(), date.getDate()).getTime()
+  }
+
   private static parseLabelIds(labelIdList: string): number[] {
     if (labelIdList.length == 0) {
       return []
@@ -566,7 +593,15 @@ export class EventManager {
         changed = true
         return {
           ...event,
-          intervalDays: event.intervalDays - 1
+          intervalDays: event.intervalDays - 1,
+          repeatUnit: this.normalizeRepeatUnit(event.repeatUnit)
+        }
+      }
+      if (event.repeatUnit != this.normalizeRepeatUnit(event.repeatUnit)) {
+        changed = true
+        return {
+          ...event,
+          repeatUnit: this.normalizeRepeatUnit(event.repeatUnit)
         }
       }
       return event
@@ -584,6 +619,13 @@ export class EventManager {
 
   private static migrateTerminatedAt(): void {
     return
+  }
+
+  private static normalizeRepeatUnit(value: RepeatUnit): RepeatUnit {
+    if (value == 'month' || value == 'year') {
+      return value
+    }
+    return 'day'
   }
 
   private static syncWidgetSnapshot(): void {

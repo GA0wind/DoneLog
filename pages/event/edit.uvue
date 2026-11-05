@@ -32,7 +32,7 @@
 				<radio-group @change="onRepeatTypeChange">
 					<view class="radio-item" @click="repeatType = 'interval'">
 						<radio value="interval" :checked="repeatType == 'interval'" />
-						<text class="radio-text">按间隔天数</text>
+						<text class="radio-text">按间隔周期</text>
 					</view>
 					<view class="radio-item" @click="repeatType = 'date'">
 						<radio value="date" :checked="repeatType == 'date'" />
@@ -47,14 +47,25 @@
 
 			<!-- 间隔天数 -->
 			<view class="form-item" v-if="repeatType == 'interval'">
-				<text class="label">间隔天数</text>
+				<text class="label">{{intervalFieldLabel}}</text>
+				<view class="interval-unit-row">
+					<view
+						class="interval-unit-chip"
+						v-for="option in intervalUnitOptions"
+						:key="option.value"
+						:class="{ active: intervalUnit == option.value }"
+						@click="selectIntervalUnit(option.value)"
+					>
+						<text class="interval-unit-chip-text" :class="{ active: intervalUnit == option.value }">{{option.label}}</text>
+					</view>
+				</view>
 				<input 
 					class="input" 
 					type="number" 
 					v-model="intervalDays" 
-					placeholder="0 表示明天，1 表示后天" 
+					:placeholder="intervalPlaceholder"
 				/>
-				<text class="field-tip">按“中间空几天”计算：0 表示明天再次需要完成。</text>
+				<text class="field-tip">{{intervalHelperText}}</text>
 			</view>
 
 			<!-- 下次完成时间 -->
@@ -152,7 +163,12 @@
 <script setup lang="uts">
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
-	import { Event, Label } from '@/utils/storage.uts'
+	import { Event, Label, RepeatUnit } from '@/utils/storage.uts'
+
+	type IntervalUnitOption = {
+		value: RepeatUnit
+		label: string
+	}
 
 	// 响应式数据
 	const eventId = ref(0)
@@ -161,6 +177,7 @@
 	const selectedLabelIds = ref<number[]>([])
 	const labels = ref<Label[]>([])
 	const repeatType = ref<'interval' | 'date' | 'single'>('interval')
+	const intervalUnit = ref<RepeatUnit>('day')
 	const intervalDays = ref('')
 	const nextDueDate = ref('')
 	const remark = ref('')
@@ -185,10 +202,46 @@
 		'#34C759'  // 深绿
 	]
 
+	const intervalUnitOptions: IntervalUnitOption[] = [
+		{ value: 'day', label: '按天' },
+		{ value: 'month', label: '按月' },
+		{ value: 'year', label: '按年' }
+	]
+
 	const getOptionString = (options: UTSJSONObject, key: string): string => {
 		const value = options[key]
 		return value != null ? `${value}` : ''
 	}
+
+	const intervalFieldLabel = computed(() => {
+		if (intervalUnit.value == 'month') {
+			return '间隔月数'
+		}
+		if (intervalUnit.value == 'year') {
+			return '间隔年数'
+		}
+		return '间隔天数'
+	})
+
+	const intervalPlaceholder = computed(() => {
+		if (intervalUnit.value == 'month') {
+			return '1 表示每 1 个月'
+		}
+		if (intervalUnit.value == 'year') {
+			return '1 表示每 1 年'
+		}
+		return '0 表示明天，1 表示后天'
+	})
+
+	const intervalHelperText = computed(() => {
+		if (intervalUnit.value == 'month') {
+			return '按自然月推进：1 表示下个月同一天再次需要完成。'
+		}
+		if (intervalUnit.value == 'year') {
+			return '按自然年推进：1 表示明年同一天再次需要完成。'
+		}
+		return '按“中间空几天”计算：0 表示明天再次需要完成。'
+	})
 
 	// 格式化日期
 	const formatDate = (timestamp: number): string => {
@@ -226,9 +279,11 @@
 			nextDueDate.value = formatDate(event.nextDueDate)
 		} else if (event.intervalDays >= 0) {
 			repeatType.value = 'interval'
+			intervalUnit.value = event.repeatUnit
 			intervalDays.value = `${event.intervalDays}`
 		} else {
 			repeatType.value = 'single'
+			intervalUnit.value = 'day'
 		}
 	}
 
@@ -285,6 +340,10 @@
 		if (newLabelError.value.length > 0) {
 			newLabelError.value = ''
 		}
+	}
+
+	const selectIntervalUnit = (unit: RepeatUnit) => {
+		intervalUnit.value = unit
 	}
 
 	// 隐藏新增标签弹窗
@@ -388,9 +447,25 @@
 
 		if (repeatType.value == 'interval') {
 			const interval = parseInt(intervalDays.value)
-			if (Number.isNaN(interval) || interval < 0) {
+			if (Number.isNaN(interval)) {
+				uni.showToast({
+					title: '请输入有效的间隔值',
+					icon: 'none'
+				})
+				return
+			}
+
+			if (intervalUnit.value == 'day' && interval < 0) {
 				uni.showToast({
 					title: '间隔天数不能小于 0',
+					icon: 'none'
+				})
+				return
+			}
+
+			if ((intervalUnit.value == 'month' || intervalUnit.value == 'year') && interval < 1) {
+				uni.showToast({
+					title: intervalUnit.value == 'month' ? '间隔月数至少为 1' : '间隔年数至少为 1',
 					icon: 'none'
 				})
 				return
@@ -418,6 +493,7 @@
 			name: eventName.value,
 			labelIdList: selectedLabelIds.value.join(','),
 			intervalDays: repeatType.value == 'interval' ? parseInt(intervalDays.value) : (repeatType.value == 'single' ? -1 : 0),
+			repeatUnit: repeatType.value == 'interval' ? intervalUnit.value : 'day',
 			nextDueDate: repeatType.value == 'date' ? new Date(nextDueDate.value).getTime() : 0,
 			remark: remark.value,
 			isTerminated: currentEvent.value.isTerminated,
@@ -529,6 +605,35 @@
 		border-width: 1px;
 		border-style: solid;
 		border-color: #eee2d7;
+	}
+
+	.interval-unit-row {
+		flex-direction: row;
+		margin-bottom: 10px;
+	}
+
+	.interval-unit-chip {
+		padding: 8px 14px;
+		border-radius: 16px;
+		background-color: #f2ebe2;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #eadfd2;
+		margin-right: 8px;
+	}
+
+	.interval-unit-chip.active {
+		background-color: #1f7a72;
+		border-color: #1f7a72;
+	}
+
+	.interval-unit-chip-text {
+		font-size: 13px;
+		color: #4d5b67;
+	}
+
+	.interval-unit-chip-text.active {
+		color: #fff;
 	}
 
 	.tags-container {
