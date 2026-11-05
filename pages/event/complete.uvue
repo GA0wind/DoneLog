@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="hero-card">
 			<text class="hero-kicker">完成确认</text>
 			<text class="hero-title">{{eventName}}</text>
@@ -9,7 +9,7 @@
 		<view class="panel">
 			<text class="section-title">完成后怎么处理？</text>
 			<radio-group @change="onContinueChange">
-				<label class="option-card" :class="{ active: !shouldContinue }">
+				<view class="option-card" :class="{ active: !shouldContinue }" @click="shouldContinue = false">
 					<view class="option-main">
 						<radio :checked="!shouldContinue" value="stop" color="#1F7A72" />
 						<view class="option-texts">
@@ -17,8 +17,8 @@
 							<text class="option-desc">完成后将这个事件标记为已终止。</text>
 						</view>
 					</view>
-				</label>
-				<label class="option-card" :class="{ active: shouldContinue }">
+				</view>
+				<view class="option-card" :class="{ active: shouldContinue }" @click="shouldContinue = true">
 					<view class="option-main">
 						<radio :checked="shouldContinue" value="continue" color="#1F7A72" />
 						<view class="option-texts">
@@ -26,23 +26,23 @@
 							<text class="option-desc">可以继续使用指定日期，也可以改成间隔天数。</text>
 						</view>
 					</view>
-				</label>
+				</view>
 			</radio-group>
 
 			<view class="schedule-panel" v-if="shouldContinue">
 				<text class="section-title">下一次如何安排？</text>
 				<radio-group @change="onRepeatTypeChange">
-					<label class="mini-option" :class="{ active: repeatType === 'date' }">
-						<radio value="date" :checked="repeatType === 'date'" color="#1F7A72" />
+					<view class="mini-option" :class="{ active: repeatType == 'date' }" @click="repeatType = 'date'">
+						<radio value="date" :checked="repeatType == 'date'" color="#1F7A72" />
 						<text class="mini-option-text">指定日期</text>
-					</label>
-					<label class="mini-option" :class="{ active: repeatType === 'interval' }">
-						<radio value="interval" :checked="repeatType === 'interval'" color="#1F7A72" />
+					</view>
+					<view class="mini-option" :class="{ active: repeatType == 'interval' }" @click="repeatType = 'interval'">
+						<radio value="interval" :checked="repeatType == 'interval'" color="#1F7A72" />
 						<text class="mini-option-text">间隔天数</text>
-					</label>
+					</view>
 				</radio-group>
 
-				<view class="form-item" v-if="repeatType === 'date'">
+				<view class="form-item" v-if="repeatType == 'date'">
 					<text class="label">下次完成日期</text>
 					<picker mode="date" :value="nextDueDate" @change="onDateChange">
 						<view class="picker">
@@ -51,7 +51,7 @@
 					</picker>
 				</view>
 
-				<view class="form-item" v-if="repeatType === 'interval'">
+				<view class="form-item" v-if="repeatType == 'interval'">
 					<text class="label">间隔天数</text>
 					<input class="input" type="number" v-model="intervalDays" placeholder="0 表示明天，1 表示后天" />
 					<text class="helper-text">按“中间空几天”计算：0 表示明天再次需要完成。</text>
@@ -83,23 +83,11 @@
 		if (event.value == null) {
 			return ''
 		}
-		if (event.value.intervalDays >= 0 && event.value.nextDueDate === 0) {
+		if (event.value.intervalDays >= 0 && event.value.nextDueDate == 0) {
 			return '这个事项使用的是间隔天数模式。完成后，你可以沿用当前周期，也可以直接改成新的周期。'
 		}
 		return '这个事项使用的是指定日期模式。完成后，你可以终止，也可以继续安排下一次。'
 	})
-
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
-		const detail = getDetailObject(e)
-		if (detail == null) return ''
-		const value = detail[key]
-		return value != null ? `${value}` : ''
-	}
 
 	const getOptionString = (options: UTSJSONObject, key: string): string => {
 		const value = options[key]
@@ -137,16 +125,16 @@
 		}
 	}
 
-	const onContinueChange = (e: UTSJSONObject) => {
-		shouldContinue.value = getDetailStringValue(e, 'value') === 'continue'
+	const onContinueChange = (e: UniRadioGroupChangeEvent) => {
+		shouldContinue.value = e.detail.value == 'continue'
 	}
 
-	const onRepeatTypeChange = (e: UTSJSONObject) => {
-		repeatType.value = getDetailStringValue(e, 'value') === 'interval' ? 'interval' : 'date'
+	const onRepeatTypeChange = (e: UniRadioGroupChangeEvent) => {
+		repeatType.value = e.detail.value == 'interval' ? 'interval' : 'date'
 	}
 
-	const onDateChange = (e: UTSJSONObject) => {
-		nextDueDate.value = getDetailStringValue(e, 'value')
+	const onDateChange = (e: UniPickerChangeEvent) => {
+		nextDueDate.value = `${e.detail.value}`
 	}
 
 	const goBack = () => {
@@ -157,7 +145,7 @@
 		if (event.value == null) return
 
 		if (shouldContinue.value) {
-			if (repeatType.value === 'date' && nextDueDate.value.length === 0) {
+			if (repeatType.value == 'date' && nextDueDate.value.length == 0) {
 				uni.showToast({
 					title: '请选择下次完成日期',
 					icon: 'none'
@@ -165,7 +153,7 @@
 				return
 			}
 
-			if (repeatType.value === 'interval') {
+			if (repeatType.value == 'interval') {
 				const interval = parseInt(intervalDays.value)
 				if (Number.isNaN(interval) || interval < 0) {
 					uni.showToast({
@@ -204,8 +192,8 @@
 				id: current.id,
 				name: current.name,
 				labelIdList: current.labelIdList,
-				intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : 0,
-				nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
+				intervalDays: repeatType.value == 'interval' ? parseInt(intervalDays.value) : 0,
+				nextDueDate: repeatType.value == 'date' ? new Date(nextDueDate.value).getTime() : 0,
 				remark: current.remark,
 				isTerminated: false,
 				terminatedAt: 0,
@@ -234,7 +222,7 @@
 
 	onLoad((options: UTSJSONObject) => {
 		const id = getOptionString(options, 'id')
-		if (id.length === 0) {
+		if (id.length == 0) {
 			uni.showToast({
 				title: '参数错误',
 				icon: 'none'

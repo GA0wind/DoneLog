@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="summary-card">
 			<view class="summary-item">
 				<text class="summary-value">¥{{monthOverview.expense.toFixed(2)}}</text>
@@ -63,7 +63,7 @@
 						</view>
 					</view>
 				</view>
-				<text class="label-budget-empty" v-if="visibleLabelBudgetOverviews.length === 0">还没有设置标签预算。</text>
+				<text class="label-budget-empty" v-if="visibleLabelBudgetOverviews.length == 0">还没有设置标签预算。</text>
 			</view>
 		</view>
 
@@ -71,7 +71,7 @@
 			<view class="entry-item" v-for="entry in entries" :key="entry.id" @click="editEntry(entry)">
 				<view class="entry-left">
 					<view class="entry-icon" :class="entry.type">
-						<text class="entry-icon-text">{{entry.type === 'expense' ? '支' : '收'}}</text>
+						<text class="entry-icon-text">{{entry.type == 'expense' ? '支' : '收'}}</text>
 					</view>
 					<view class="entry-info">
 						<text class="entry-desc">{{getEntryDisplayDesc(entry)}}</text>
@@ -79,11 +79,11 @@
 					</view>
 				</view>
 				<view class="entry-right">
-					<text class="entry-amount" :class="entry.type">{{entry.type === 'expense' ? '-' : '+'}}¥{{entry.amount.toFixed(2)}}</text>
+					<text class="entry-amount" :class="entry.type">{{entry.type == 'expense' ? '-' : '+'}}¥{{entry.amount.toFixed(2)}}</text>
 					<button class="delete-btn" @click.stop="deleteEntry(entry.id)">删除</button>
 				</view>
 			</view>
-			<view class="empty-tip" v-if="entries.length === 0">
+			<view class="empty-tip" v-if="entries.length == 0">
 				<text>还没有记账记录，点击右下角开始添加</text>
 			</view>
 		</view>
@@ -93,19 +93,19 @@
 		</view>
 
 		<view class="modal" v-if="showModal && !showLabelSelector && !showAddLabelModal" @click="hideModal">
-			<view class="modal-content" @click.stop>
+			<scroll-view :scroll-y="true" class="modal-content" :style="{ height: entryModalHeight + 'px' }" @click.stop>
 				<text class="modal-title">{{editingId > 0 ? '编辑记账' : '新增记账'}}</text>
 				<view class="form-item">
 					<text class="label">收支类型</text>
 					<radio-group class="type-group" @change="onTypeChange">
-						<label class="radio-chip first-radio-chip" :class="{ active: formType === 'expense' }">
-							<radio value="expense" :checked="formType === 'expense'" color="#E07A5F" />
+						<view @click="formType = 'expense'" class="radio-chip first-radio-chip" :class="{ active: formType == 'expense' }">
+							<radio value="expense" :checked="formType == 'expense'" color="#E07A5F" />
 							<text>支出</text>
-						</label>
-						<label class="radio-chip" :class="{ active: formType === 'income' }">
-							<radio value="income" :checked="formType === 'income'" color="#1F7A72" />
+						</view>
+						<view @click="formType = 'income'" class="radio-chip" :class="{ active: formType == 'income' }">
+							<radio value="income" :checked="formType == 'income'" color="#1F7A72" />
 							<text>收入</text>
-						</label>
+						</view>
 					</radio-group>
 				</view>
 
@@ -122,7 +122,7 @@
 								<text class="tag" v-for="labelId in formLabelIds" :key="labelId" :style="{ backgroundColor: getLabelColor(labelId) }">
 									{{getLabelName(labelId)}}
 								</text>
-								<text class="placeholder" v-if="formLabelIds.length === 0">请选择标签</text>
+								<text class="placeholder" v-if="formLabelIds.length == 0">请选择标签</text>
 							</view>
 						</view>
 						<button class="mini-add-btn" @click.stop="openAddLabel">新增标签</button>
@@ -145,7 +145,7 @@
 					<button class="cancel-btn" @click="hideModal">取消</button>
 					<button class="confirm-btn" @click="saveEntry">保存</button>
 				</view>
-			</view>
+			</scroll-view>
 		</view>
 
 		<view class="modal" v-if="showAddLabelModal" @click="hideAddLabel">
@@ -163,11 +163,11 @@
 							class="color-option"
 							v-for="color in colorOptions"
 							:key="color"
-							:class="{ selected: newLabelColor === color }"
+							:class="{ selected: newLabelColor == color }"
 							:style="{ backgroundColor: color }"
 							@click.stop="newLabelColor = color"
 						>
-							<text v-if="newLabelColor === color" class="color-check">✓</text>
+							<text v-if="newLabelColor == color" class="color-check">✓</text>
 						</view>
 					</view>
 				</view>
@@ -181,7 +181,7 @@
 		<view class="modal" v-if="showLabelSelector" @click="showLabelSelector = false">
 			<view class="modal-content" @click.stop>
 				<text class="modal-title">选择标签</text>
-				<scroll-view scroll-y class="selector-body">
+				<scroll-view :scroll-y="true" class="selector-body">
 					<view class="selector-item" :class="{ selected: formLabelIds.includes(label.id) }" v-for="label in labels" :key="label.id" @click="toggleFormLabel(label.id)">
 						<view class="selector-left">
 							<view class="selector-color" :style="{ backgroundColor: label.color }"></view>
@@ -246,6 +246,7 @@
 	const labelBudgetOverviews = ref<LabelBudgetOverview[]>([])
 
 	const showModal = ref(false)
+	const entryModalHeight = ref(360)
 	const showAddLabelModal = ref(false)
 	const showLabelSelector = ref(false)
 	const showBudgetModal = ref(false)
@@ -275,24 +276,6 @@
 		'#6D597A'
 	]
 
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailStringValue = (e: UTSJSONObject): string => {
-		const detail = getDetailObject(e)
-		if (detail == null) return ''
-		const value = detail['value']
-		return value != null ? `${value}` : ''
-	}
-
-	const getDetailNumberValue = (e: UTSJSONObject): number => {
-		const value = getDetailStringValue(e)
-		const parsed = parseInt(value)
-		return Number.isNaN(parsed) ? 0 : parsed
-	}
-
 	const formatDate = (timestamp: number): string => {
 		const date = new Date(timestamp)
 		const year = date.getFullYear()
@@ -302,7 +285,7 @@
 	}
 
 	const parseLabelIds = (labelIdList: string): number[] => {
-		if (labelIdList.length === 0) return []
+		if (labelIdList.length == 0) return []
 		return labelIdList
 			.split(',')
 			.map(id => parseInt(id))
@@ -310,17 +293,17 @@
 	}
 
 	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(item => item.id === labelId)
+		const label = labels.value.find(item => item.id == labelId)
 		return label != null ? label.name : '未知标签'
 	}
 
 	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(item => item.id === labelId)
+		const label = labels.value.find(item => item.id == labelId)
 		return label != null ? label.color : '#B7A995'
 	}
 
 	const getLabelSortOrder = (labelId: number): number => {
-		const label = labels.value.find(item => item.id === labelId)
+		const label = labels.value.find(item => item.id == labelId)
 		return label != null ? label.sortOrder : 9999
 	}
 
@@ -364,17 +347,17 @@
 
 	const visibleLabelBudgetOverviews = computed<LabelBudgetOverview[]>(() => {
 		return labelBudgetOverviews.value
-			.filter(item => labels.value.some(label => label.id === item.labelId))
+			.filter(item => labels.value.some(label => label.id == item.labelId))
 			.sort((a, b) => getLabelSortOrder(a.labelId) - getLabelSortOrder(b.labelId))
 	})
 
 	const selectedBudgetLabelName = computed(() => {
-		const label = labels.value.find(item => item.id === selectedBudgetLabelId.value)
+		const label = labels.value.find(item => item.id == selectedBudgetLabelId.value)
 		return label != null ? label.name : '请选择标签'
 	})
 
 	const selectedBudgetLabelIndex = computed(() => {
-		const index = labels.value.findIndex(item => item.id === selectedBudgetLabelId.value)
+		const index = labels.value.findIndex(item => item.id == selectedBudgetLabelId.value)
 		return index >= 0 ? index : 0
 	})
 
@@ -388,6 +371,7 @@
 	}
 
 	const openAddModal = () => {
+		entryModalHeight.value = Math.max(200, Math.min(600, uni.getWindowInfo().windowHeight - 100))
 		resetForm()
 		showLabelSelector.value = false
 		showAddLabelModal.value = false
@@ -395,6 +379,7 @@
 	}
 
 	const editEntry = (entry: AccountEntry) => {
+		entryModalHeight.value = Math.max(200, Math.min(600, uni.getWindowInfo().windowHeight - 100))
 		editingId.value = entry.id
 		formType.value = entry.type
 		formAmount.value = `${entry.amount}`
@@ -428,7 +413,7 @@
 	}
 
 	const openLabelBudgetModal = (labelId: number) => {
-		if (labels.value.length === 0) {
+		if (labels.value.length == 0) {
 			uni.showToast({ title: '请先新增记账标签', icon: 'none' })
 			return
 		}
@@ -456,8 +441,8 @@
 		}
 	}
 
-	const onLabelBudgetChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e)
+	const onLabelBudgetChange = (e: UniPickerChangeEvent) => {
+		const index = parseInt(`${e.detail.value}`)
 		if (index < 0 || index >= labels.value.length) return
 		selectedBudgetLabelId.value = labels.value[index].id
 		labelBudgetError.value = ''
@@ -544,12 +529,12 @@
 		}
 	}
 
-	const onTypeChange = (e: UTSJSONObject) => {
-		formType.value = getDetailStringValue(e) === 'income' ? 'income' : 'expense'
+	const onTypeChange = (e: UniRadioGroupChangeEvent) => {
+		formType.value = e.detail.value == 'income' ? 'income' : 'expense'
 	}
 
-	const onDateChange = (e: UTSJSONObject) => {
-		formDate.value = getDetailStringValue(e)
+	const onDateChange = (e: UniPickerChangeEvent) => {
+		formDate.value = `${e.detail.value}`
 	}
 
 	const toggleFormLabel = (labelId: number) => {
@@ -563,7 +548,7 @@
 
 	const addAccountLabel = () => {
 		const createdName = newLabelName.value.trim()
-		if (createdName.length === 0) {
+		if (createdName.length == 0) {
 			newLabelError.value = '请输入标签名称'
 			uni.showToast({ title: '请输入标签名称', icon: 'none' })
 			return
@@ -587,7 +572,7 @@
 		}
 
 		labels.value = LabelManager.getSortedLabels('account')
-		const created = labels.value.find(item => item.name === createdName)
+		const created = labels.value.find(item => item.name == createdName)
 		if (created != null && formLabelIds.value.includes(created.id) == false) {
 			formLabelIds.value.push(created.id)
 		}
@@ -654,7 +639,7 @@
 	}
 
 	onShow(() => {
-		if (formDate.value.length === 0) {
+		if (formDate.value.length == 0) {
 			resetForm()
 		}
 		loadData()

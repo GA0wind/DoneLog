@@ -1,5 +1,5 @@
 import { StorageUtils, Event, EventInput, CompletionRecord } from './storage.uts'
-import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
+import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget'
 
 export type StatsPeriod = 'week' | 'month'
 
@@ -64,7 +64,7 @@ export class EventManager {
     const todayStart = this.getTodayStart()
     const dueDateStart = this.getDueDateStart(event, lastCompleteDate)
 
-    if (dueDateStart !== null) {
+    if (dueDateStart != null) {
       return Math.floor((dueDateStart - todayStart) / this.oneDay)
     }
 
@@ -84,12 +84,12 @@ export class EventManager {
     }
 
     if (event.intervalDays > 0) {
-      const baseTime = lastCompleteDate !== null ? lastCompleteDate : event.createTime
+      const baseTime = lastCompleteDate != null ? lastCompleteDate : event.createTime
       return this.getStartOfDay(baseTime) + (event.intervalDays + 1) * this.oneDay
     }
 
-    if (event.intervalDays === 0) {
-      const baseTime = lastCompleteDate !== null ? lastCompleteDate : event.createTime
+    if (event.intervalDays == 0) {
+      const baseTime = lastCompleteDate != null ? lastCompleteDate : event.createTime
       return this.getStartOfDay(baseTime) + this.oneDay
     }
 
@@ -104,7 +104,7 @@ export class EventManager {
    * 固定日期事件在完成后视为已处理，直到用户重新编辑日期
    */
   static isFixedDateCompleted(event: Event, lastCompleteDate: number | null = null): boolean {
-    if (event.nextDueDate <= 0 || lastCompleteDate === null) {
+    if (event.nextDueDate <= 0 || lastCompleteDate == null) {
       return false
     }
 
@@ -125,7 +125,7 @@ export class EventManager {
     // 筛选事件
     let filteredEvents = events.filter(event => {
       // 标签筛选
-      if (labelId !== null) {
+      if (labelId != null) {
         const labelIds = this.parseLabelIds(event.labelIdList)
         if (labelIds.includes(labelId) == false) {
           return false
@@ -149,8 +149,8 @@ export class EventManager {
       const daysB = this.calculateDaysUntilDue(b, lastRecordB != null ? lastRecordB.lastCompleteDate : null)
 
       // 距今天数为0的优先（今天要做的事）
-      if (daysA === 0 && daysB !== 0) return -1
-      if (daysB === 0 && daysA !== 0) return 1
+      if (daysA == 0 && daysB != 0) return -1
+      if (daysB == 0 && daysA != 0) return 1
 
       // 已过去的事件（days < 0），按绝对值从大到小排列
       if (daysA < 0 && daysB < 0) {
@@ -184,7 +184,7 @@ export class EventManager {
       const lastRecord = latestRecordByEventId.get(event.id)
 
       const daysUntilDue = this.calculateDaysUntilDue(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
-      return daysUntilDue === 0
+      return daysUntilDue == 0
     })
   }
 
@@ -214,7 +214,7 @@ export class EventManager {
         statusText = `已逾期 ${Math.abs(daysUntilDue)} 天`
         tagText = '逾期'
         priority = 'overdue'
-      } else if (daysUntilDue === 0) {
+      } else if (daysUntilDue == 0) {
         statusText = '今天要完成'
         tagText = '今日'
         priority = 'today'
@@ -243,7 +243,7 @@ export class EventManager {
   static isCompletedOnDate(eventId: number, timestamp: number): boolean {
     const targetDay = this.getStartOfDay(timestamp)
     const records = this.getCompletionRecordsByEventId(eventId)
-    return records.some(record => this.getStartOfDay(record.lastCompleteDate) === targetDay)
+    return records.some(record => this.getStartOfDay(record.lastCompleteDate) == targetDay)
   }
 
   static getLatestCompletionDates(): EventLatestCompletion[] {
@@ -271,7 +271,7 @@ export class EventManager {
     const eventIds: number[] = []
 
     records.forEach(record => {
-      if (this.getStartOfDay(record.lastCompleteDate) === targetDay && eventIds.includes(record.eventId) == false) {
+      if (this.getStartOfDay(record.lastCompleteDate) == targetDay && eventIds.includes(record.eventId) == false) {
         eventIds.push(record.eventId)
       }
     })
@@ -329,8 +329,8 @@ export class EventManager {
    */
   static updateEvent(event: Event): boolean {
     const events = StorageUtils.getEvents()
-    const index = events.findIndex(e => e.id === event.id)
-    if (index === -1) return false
+    const index = events.findIndex(e => e.id == event.id)
+    if (index == -1) return false
 
     event.updateTime = Date.now()
     events[index] = event
@@ -346,8 +346,8 @@ export class EventManager {
    */
   static terminateEvent(eventId: number): boolean {
     const events = StorageUtils.getEvents()
-    const index = events.findIndex(e => e.id === eventId)
-    if (index === -1) return false
+    const index = events.findIndex(e => e.id == eventId)
+    if (index == -1) return false
 
     events[index].isTerminated = true
     events[index].terminatedAt = Date.now()
@@ -364,13 +364,13 @@ export class EventManager {
    */
   static deleteEvent(eventId: number): boolean {
     let events = StorageUtils.getEvents()
-    events = events.filter(e => e.id !== eventId)
+    events = events.filter(e => e.id != eventId)
     const success = StorageUtils.saveEvents(events)
 
     // 同时删除相关的完成记录
     if (success == true) {
       let records = StorageUtils.getCompletionRecords()
-      records = records.filter(r => r.eventId !== eventId)
+      records = records.filter(r => r.eventId != eventId)
       StorageUtils.saveCompletionRecords(records)
     }
 
@@ -385,9 +385,9 @@ export class EventManager {
    */
   static isEventCompletedToday(eventId: number): boolean {
     const records = StorageUtils.getCompletionRecords()
-    const eventRecords = records.filter(r => r.eventId === eventId)
+    const eventRecords = records.filter(r => r.eventId == eventId)
 
-    if (eventRecords.length === 0) return false
+    if (eventRecords.length == 0) return false
 
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
@@ -440,8 +440,15 @@ export class EventManager {
    */
   static getEventById(eventId: number): Event | null {
     const events = StorageUtils.getEvents()
-    const event = events.find(e => e.id === eventId)
+    const event = events.find(e => e.id == eventId)
     return event != null ? event : null
+  }
+
+  static getCompletionCount(period: StatsPeriod): number {
+    const range = this.getPeriodRange(period)
+    return StorageUtils.getCompletionRecords().filter(record =>
+      record.lastCompleteDate >= range.start && record.lastCompleteDate <= range.end
+    ).length
   }
 
   static getCompletionStatsByLabel(period: StatsPeriod): EventLabelStats[] {
@@ -455,13 +462,13 @@ export class EventManager {
         return
       }
 
-      const event = events.find(item => item.id === record.eventId)
+      const event = events.find(item => item.id == record.eventId)
       if (event == null) {
         return
       }
 
       const labelIds = this.parseLabelIds(event.labelIdList)
-      if (labelIds.length === 0) {
+      if (labelIds.length == 0) {
         const cached = statsMap.get(0)
         const uncategorized: EventLabelStats = cached != null ? cached : { labelId: 0, count: 0 }
         uncategorized.count += 1
@@ -492,7 +499,7 @@ export class EventManager {
   private static getCompletionRecordsByEventId(eventId: number): CompletionRecord[] {
     const records = StorageUtils.getCompletionRecords()
     return records
-      .filter(r => r.eventId === eventId)
+      .filter(r => r.eventId == eventId)
       .sort((a, b) => b.lastCompleteDate - a.lastCompleteDate)
   }
 
@@ -510,7 +517,7 @@ export class EventManager {
   private static hasCompletionOnDate(records: CompletionRecord[], eventId: number, timestamp: number): boolean {
     const targetDay = this.getStartOfDay(timestamp)
     return records.some(record => {
-      return record.eventId === eventId && this.getStartOfDay(record.lastCompleteDate) === targetDay
+      return record.eventId == eventId && this.getStartOfDay(record.lastCompleteDate) == targetDay
     })
   }
 
@@ -520,7 +527,7 @@ export class EventManager {
   }
 
   private static parseLabelIds(labelIdList: string): number[] {
-    if (labelIdList.length === 0) {
+    if (labelIdList.length == 0) {
       return []
     }
 
@@ -535,9 +542,9 @@ export class EventManager {
     const current = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const end = current + this.oneDay - 1
 
-    if (period === 'week') {
+    if (period == 'week') {
       const dayOfWeek = now.getDay()
-      const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      const offset = dayOfWeek == 0 ? 6 : dayOfWeek - 1
       const weekStart = current - offset * this.oneDay
       return { start: weekStart, end }
     }
@@ -580,12 +587,23 @@ export class EventManager {
   }
 
   private static syncWidgetSnapshot(): void {
+    const dayStart = this.getTodayStart()
+    const dayEnd = dayStart + this.oneDay
+    let income = 0
+    let expense = 0
+    let count = 0
+    StorageUtils.getAccountEntries().forEach(entry => {
+      if (entry.occurredAt < dayStart || entry.occurredAt >= dayEnd) return
+      count += 1
+      if (entry.type == 'income') income += entry.amount
+      else expense += entry.amount
+    })
     saveWidgetSnapshot(JSON.stringify({
       items: this.getWidgetSnapshot(),
       overview: {
-        income: 0,
-        expense: 0,
-        count: 0
+        income,
+        expense,
+        count
       }
     }))
   }

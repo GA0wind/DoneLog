@@ -47,7 +47,7 @@ function getViewId(context: Context, name: string): Int {
 }
 
 function parseSnapshot(snapshot: string): WidgetPayload {
-	if (snapshot.length === 0) {
+	if (snapshot.length == 0) {
 		return {
 			items: [],
 			overview: {
@@ -59,10 +59,10 @@ function parseSnapshot(snapshot: string): WidgetPayload {
 	}
 
 	try {
-		const parsedArray = JSON.parseArray<WidgetItem>(snapshot)
-		if (parsedArray != null) {
+		if (snapshot.trim().startsWith('[')) {
+			const parsedArray = JSON.parseArray<WidgetItem>(snapshot)
 			return {
-				items: parsedArray,
+				items: parsedArray != null ? parsedArray : [],
 				overview: {
 					income: 0,
 					expense: 0,
@@ -183,6 +183,10 @@ export function refreshWidget(): void {
 }
 
 export class DoneLogWidgetProvider extends AppWidgetProvider {
+	constructor() {
+		super()
+	}
+
 	override onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray): void {
 		super.onUpdate(context, appWidgetManager, appWidgetIds)
 		updateWidgetViews(context)
@@ -190,6 +194,10 @@ export class DoneLogWidgetProvider extends AppWidgetProvider {
 }
 
 export class WidgetActionBridgeActivity extends Activity {
+	constructor() {
+		super()
+	}
+
 	override onCreate(savedInstanceState: Bundle | null): void {
 		super.onCreate(savedInstanceState)
 

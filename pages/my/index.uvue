@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="hero-card">
 			<text class="hero-kicker">我的空间</text>
 			<text class="hero-title">统计与管理</text>
@@ -7,13 +7,13 @@
 		</view>
 
 		<view class="period-switch">
-			<view class="period-pill" :class="{ active: period === 'week' }" @click="setPeriod('week')">
-				<text class="period-kicker" :class="{ active: period === 'week' }">周期</text>
-				<text class="period-text" :class="{ active: period === 'week' }">按星期</text>
+			<view class="period-pill" :class="{ active: period == 'week' }" @click="setPeriod('week')">
+				<text class="period-kicker" :class="{ active: period == 'week' }">周期</text>
+				<text class="period-text" :class="{ active: period == 'week' }">按星期</text>
 			</view>
-			<view class="period-pill last-period-pill" :class="{ active: period === 'month' }" @click="setPeriod('month')">
-				<text class="period-kicker" :class="{ active: period === 'month' }">周期</text>
-				<text class="period-text" :class="{ active: period === 'month' }">按月份</text>
+			<view class="period-pill last-period-pill" :class="{ active: period == 'month' }" @click="setPeriod('month')">
+				<text class="period-kicker" :class="{ active: period == 'month' }">周期</text>
+				<text class="period-text" :class="{ active: period == 'month' }">按月份</text>
 			</view>
 		</view>
 
@@ -187,10 +187,10 @@
 	const importText = ref('')
 	const importError = ref('')
 
-	const periodText = computed(() => period.value === 'week' ? '本周' : '本月')
-	const eventTotalCount = computed(() => eventStats.value.reduce((sum, item) => sum + item.count, 0))
+	const periodText = computed(() => period.value == 'week' ? '本周' : '本月')
+	const eventTotalCount = ref(0)
 	const widgetSummary = computed(() => {
-		if (widgetEvents.value.length === 0) {
+		if (widgetEvents.value.length == 0) {
 			return '今天暂无待处理事件'
 		}
 		return `优先显示 ${widgetEvents.value.length} 条待处理事件`
@@ -200,6 +200,7 @@
 		eventLabels.value = LabelManager.getSortedLabels('event')
 		accountLabels.value = LabelManager.getSortedLabels('account')
 		eventStats.value = EventManager.getCompletionStatsByLabel(period.value)
+		eventTotalCount.value = EventManager.getCompletionCount(period.value)
 		accountStats.value = AccountManager.getStatsByLabel(period.value)
 		accountOverview.value = AccountManager.getOverview(period.value)
 		budgetOverview.value = AccountManager.getMonthlyBudgetOverview()
@@ -213,26 +214,26 @@
 	}
 
 	const getEventLabelName = (labelId: number): string => {
-		if (labelId === 0) return '未分类'
-		const label = eventLabels.value.find(item => item.id === labelId)
+		if (labelId == 0) return '未分类'
+		const label = eventLabels.value.find(item => item.id == labelId)
 		return label != null ? label.name : '未知标签'
 	}
 
 	const getEventLabelColor = (labelId: number): string => {
-		if (labelId === 0) return '#B7A995'
-		const label = eventLabels.value.find(item => item.id === labelId)
+		if (labelId == 0) return '#B7A995'
+		const label = eventLabels.value.find(item => item.id == labelId)
 		return label != null ? label.color : '#1F7A72'
 	}
 
 	const getAccountLabelName = (labelId: number): string => {
-		if (labelId === 0) return '未分类'
-		const label = accountLabels.value.find(item => item.id === labelId)
+		if (labelId == 0) return '未分类'
+		const label = accountLabels.value.find(item => item.id == labelId)
 		return label != null ? label.name : '未知标签'
 	}
 
 	const getAccountLabelColor = (labelId: number): string => {
-		if (labelId === 0) return '#B7A995'
-		const label = accountLabels.value.find(item => item.id === labelId)
+		if (labelId == 0) return '#B7A995'
+		const label = accountLabels.value.find(item => item.id == labelId)
 		return label != null ? label.color : '#E07A5F'
 	}
 
@@ -279,7 +280,7 @@
 	}
 
 	const importBackup = () => {
-		if (importText.value.trim().length === 0) {
+		if (importText.value.trim().length == 0) {
 			importError.value = '请先粘贴备份内容'
 			return
 		}

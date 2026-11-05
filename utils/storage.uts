@@ -55,7 +55,7 @@ export class StorageUtils {
   static getEvents(): Event[] {
     try {
       const data = uni.getStorageSync(this.EVENTS_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return []
       }
       const parsed = JSON.parseArray<LegacyEvent>(data)
@@ -99,7 +99,7 @@ export class StorageUtils {
   static getCompletionRecords(): CompletionRecord[] {
     try {
       const data = uni.getStorageSync(this.COMPLETION_RECORDS_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return []
       }
       const parsed = JSON.parseArray<CompletionRecord>(data)
@@ -129,13 +129,13 @@ export class StorageUtils {
   static getEventLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.EVENT_LABELS_KEY)
-      if (typeof data === 'string' && data.length > 0) {
+      if (typeof data == 'string' && data.length > 0) {
         const parsed = JSON.parseArray<Label>(data)
         return parsed != null ? parsed : []
       }
 
       const legacyData = uni.getStorageSync(this.LEGACY_LABELS_KEY)
-      const labels = typeof legacyData === 'string' && legacyData.length > 0
+      const labels = typeof legacyData == 'string' && legacyData.length > 0
         ? (JSON.parseArray<Label>(legacyData) ?? [])
         : []
       if (labels.length > 0) {
@@ -167,7 +167,7 @@ export class StorageUtils {
   static getAccountLabels(): Label[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_LABELS_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return []
       }
       const parsed = JSON.parseArray<Label>(data)
@@ -197,7 +197,7 @@ export class StorageUtils {
   static getAccountEntries(): AccountEntry[] {
     try {
       const data = uni.getStorageSync(this.ACCOUNT_ENTRIES_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return []
       }
       const entries = JSON.parseArray<LegacyAccountEntry>(data)
@@ -239,7 +239,7 @@ export class StorageUtils {
   static getBudgetSettings(): BudgetSettings {
     try {
       const data = uni.getStorageSync(this.BUDGET_SETTINGS_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return { monthlyExpenseBudget: 0, labelMonthlyBudgets: [], updateTime: 0 }
       }
 
@@ -274,7 +274,7 @@ export class StorageUtils {
   static getAppMeta(): AppMeta {
     try {
       const data = uni.getStorageSync(this.APP_META_KEY)
-      if (typeof data !== 'string' || data.length === 0) {
+      if (typeof data != 'string' || data.length == 0) {
         return { intervalSemanticsVersion: 0, defaultLabelsVersion: 0 }
       }
       const parsed = JSON.parse<AppMeta>(data)

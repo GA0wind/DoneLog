@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<!-- 事件信息卡片 -->
 		<view class="event-info">
 			<view class="event-header">
@@ -56,7 +56,7 @@
 			<view class="section-header">
 				<text class="section-title">完成记录</text>
 			</view>
-			<scroll-view scroll-y class="history-list">
+			<scroll-view :scroll-y="true" class="history-list">
 				<view class="history-item" v-for="record in historyRecords" :key="record.id">
 					<view class="history-dot"></view>
 					<view class="history-content">
@@ -64,7 +64,7 @@
 						<text class="history-time">{{getTimeText(record.lastCompleteDate)}}</text>
 					</view>
 				</view>
-				<view class="empty-tip" v-if="historyRecords.length === 0">
+				<view class="empty-tip" v-if="historyRecords.length == 0">
 					<text>暂无完成记录</text>
 				</view>
 			</scroll-view>
@@ -127,11 +127,11 @@
 
 	const isOverdue = computed(() => {
 		if (event.value == null) return false
-		const latestRecord = historyRecords.value[0]
+		const latestRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
 		if (EventManager.isFixedDateCompleted(event.value, latestRecord != null ? latestRecord.lastCompleteDate : null)) {
 			return false
 		}
-		const lastRecord = historyRecords.value[0]
+		const lastRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)
 		return daysUntilDue < 0
 	})
@@ -140,7 +140,7 @@
 		if (event.value == null) return false
 		if (event.value.isTerminated) return false
 		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return false
-		const latestRecord = historyRecords.value[0]
+		const latestRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
 		return EventManager.isFixedDateCompleted(event.value, latestRecord != null ? latestRecord.lastCompleteDate : null) == false
 	})
 
@@ -149,18 +149,18 @@
 		if (event.value.isTerminated) return '已终止'
 		if (EventManager.isCompletedOnDate(event.value.id, Date.now())) return '已完成'
 
-		const lastRecord = historyRecords.value[0]
+		const lastRecord = historyRecords.value.length > 0 ? historyRecords.value[0] : null
 		if (EventManager.isFixedDateCompleted(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)) {
 			return '已完成'
 		}
 
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event.value, lastRecord != null ? lastRecord.lastCompleteDate : null)
 
-		if (daysUntilDue === 0) {
+		if (daysUntilDue == 0) {
 			return '今天'
-		} else if (daysUntilDue === 1) {
+		} else if (daysUntilDue == 1) {
 			return '明天'
-		} else if (daysUntilDue === -1) {
+		} else if (daysUntilDue == -1) {
 			return '昨天'
 		} else if (daysUntilDue < 0) {
 			return `已过期 ${Math.abs(daysUntilDue)} 天`
@@ -191,7 +191,7 @@
 
 	const getEventLabelIds = (): number[] => {
 		if (event.value == null) return []
-		if (event.value.labelIdList.length === 0) return []
+		if (event.value.labelIdList.length == 0) return []
 		return event.value.labelIdList
 			.split(',')
 			.map(id => parseInt(id))
@@ -208,13 +208,13 @@
 
 	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.name : ''
 	}
 
 	// 获取标签颜色
 	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.color : '#007AFF'
 	}
 

@@ -2,3 +2,4 @@ node_modules/
 unpackage/
 .hbuilderx/
 .DS_Store
+/local-native-sdk/SDK/

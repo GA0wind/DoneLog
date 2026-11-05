@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<!-- 搜索和筛选 -->
 		<view class="filter-bar">
 			<input class="search-input" v-model="searchKeyword" placeholder="搜索事件..." />
@@ -40,7 +40,7 @@
 					</text>
 				</view>
 				<view class="event-remark">
-					<text class="remark-text" :class="{ 'remark-placeholder': event.remark.length === 0 }">{{event.remark.length > 0 ? getShortRemark(event.remark) : '占位备注'}}</text>
+					<text class="remark-text" :class="{ 'remark-placeholder': event.remark.length == 0 }">{{event.remark.length > 0 ? getShortRemark(event.remark) : '占位备注'}}</text>
 				</view>
 				<view class="event-footer">
 					<view class="event-tags">
@@ -59,7 +59,7 @@
 					</view>
 				</view>
 			</view>
-			<view class="empty-tip" v-if="filteredEvents.length === 0">
+			<view class="empty-tip" v-if="filteredEvents.length == 0">
 				<text class="empty-icon">◌</text>
 				<text class="empty-title">暂时没有待办事件</text>
 				<text class="empty-desc">试试新增一个周期事项，或者切换筛选条件看看。</text>
@@ -103,19 +103,6 @@
 		{ id: 2, name: '已终止' }
 	])
 
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailNumberValue = (e: UTSJSONObject, key: string): number => {
-		const detail = getDetailObject(e)
-		if (detail == null) return 0
-		const value = detail[key]
-		const parsed = parseInt(value != null ? `${value}` : '')
-		return Number.isNaN(parsed) ? 0 : parsed
-	}
-
 	// 获取标签选项
 	const getLabelOptions = () => {
 		const allLabels = LabelManager.getSortedLabels()
@@ -132,7 +119,7 @@
 	}
 
 	const getEventLabelIds = (event: Event): number[] => {
-		if (event.labelIdList.length === 0) return []
+		if (event.labelIdList.length == 0) return []
 		return event.labelIdList
 			.split(',')
 			.map(id => parseInt(id))
@@ -140,16 +127,16 @@
 	}
 
 	const getLastCompleteDate = (event: Event): number | null => {
-		const item = latestCompletionDates.value.find(record => record.eventId === event.id)
+		const item = latestCompletionDates.value.find(record => record.eventId == event.id)
 		return item != null ? item.lastCompleteDate : null
 	}
 
 	const matchesStatus = (event: Event): boolean => {
-		if (selectedStatus.value == null || selectedStatus.value.id === 0) {
+		if (selectedStatus.value == null || selectedStatus.value.id == 0) {
 			return true
 		}
 
-		if (selectedStatus.value.id === 1) {
+		if (selectedStatus.value.id == 1) {
 			return !event.isTerminated
 		}
 
@@ -184,21 +171,21 @@
 	}
 
 	const compareEventsForDisplay = (a: Event, b: Event): number => {
-		if (selectedStatus.value != null && selectedStatus.value.id === 2) {
+		if (selectedStatus.value != null && selectedStatus.value.id == 2) {
 			return 0
 		}
 
 		const groupA = getEventDisplayGroup(a)
 		const groupB = getEventDisplayGroup(b)
-		if (groupA !== groupB) {
+		if (groupA != groupB) {
 			return groupA - groupB
 		}
 
-		if (groupA === 1) {
+		if (groupA == 1) {
 			return getCompletionSortTime(b) - getCompletionSortTime(a)
 		}
 
-		if (groupA === 2) {
+		if (groupA == 2) {
 			return b.terminatedAt - a.terminatedAt
 		}
 
@@ -226,7 +213,7 @@
 				return false
 			}
 
-			if (searchKeyword.value.length === 0) {
+			if (searchKeyword.value.length == 0) {
 				return true
 			}
 
@@ -246,19 +233,19 @@
 
 	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.name : ''
 	}
 
 	// 获取标签颜色
 	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.color : '#007AFF'
 	}
 
 	// 获取短备注
 	const getShortRemark = (remark: string): string => {
-		if (remark.length === 0) return ''
+		if (remark.length == 0) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
 	}
 
@@ -286,7 +273,7 @@
 
 		const daysUntilDue = EventManager.calculateDaysUntilDue(event, lastCompleteDate)
 
-		if (daysUntilDue === 0) {
+		if (daysUntilDue == 0) {
 			return '今天'
 		} else if (daysUntilDue < 0) {
 			return `已过去 ${Math.abs(daysUntilDue)} 天`
@@ -297,7 +284,7 @@
 
 	// 标记完成
 	const markComplete = (eventId: number) => {
-		const cachedEvent = events.value.find(item => item.id === eventId)
+		const cachedEvent = events.value.find(item => item.id == eventId)
 		const event = cachedEvent != null ? cachedEvent : EventManager.getEventById(eventId)
 		if (event == null) return
 		if (event.nextDueDate > 0) {
@@ -327,9 +314,9 @@
 	}
 
 	// 标签筛选改变
-	const onLabelChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e, 'value')
-		if (index === 0) {
+	const onLabelChange = (e: UniPickerChangeEvent) => {
+		const index = parseInt(`${e.detail.value}`)
+		if (index == 0) {
 			selectedLabel.value = null
 		} else {
 			selectedLabel.value = labelOptions.value[index]
@@ -338,9 +325,9 @@
 	}
 
 	// 状态筛选改变
-	const onStatusChange = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e, 'value')
-		if (index === 0) {
+	const onStatusChange = (e: UniPickerChangeEvent) => {
+		const index = parseInt(`${e.detail.value}`)
+		if (index == 0) {
 			selectedStatus.value = null
 		} else {
 			selectedStatus.value = statusOptions.value[index]

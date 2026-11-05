@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="tips-card">
 			<text class="tips-title">{{pageTitle}}</text>
 			<text class="tips-desc">支持新增、编辑、删除和上下排序。排序结果会直接影响标签显示顺序。</text>
@@ -12,13 +12,13 @@
 					<text class="label-name">{{label.name}}</text>
 				</view>
 				<view class="actions">
-					<button class="sort-btn" :disabled="label.sortOrder === 1" @click.stop="moveUp(label)">↑</button>
-					<button class="sort-btn" :disabled="label.sortOrder === labels.length" @click.stop="moveDown(label)">↓</button>
+					<button class="sort-btn" :disabled="label.sortOrder == 1" @click.stop="moveUp(label)">↑</button>
+					<button class="sort-btn" :disabled="label.sortOrder == labels.length" @click.stop="moveDown(label)">↓</button>
 					<button class="merge-btn" :disabled="labels.length < 2" @click.stop="showMergeDialog(label)">并</button>
 					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删</button>
 				</view>
 			</view>
-			<view class="empty-tip" v-if="labels.length === 0">
+			<view class="empty-tip" v-if="labels.length == 0">
 				<text>暂无标签</text>
 			</view>
 		</view>
@@ -45,11 +45,11 @@
 								class="color-option"
 								v-for="color in colorOptions"
 								:key="color"
-								:class="{ selected: labelColor === color }"
+								:class="{ selected: labelColor == color }"
 								:style="{ backgroundColor: color }"
 								@click="labelColor = color"
 							>
-								<text v-if="labelColor === color" class="check-icon">✓</text>
+								<text v-if="labelColor == color" class="check-icon">✓</text>
 							</view>
 						</view>
 					</view>
@@ -67,7 +67,7 @@
 					<text class="modal-title">合并标签</text>
 					<text class="modal-desc">选择要合并到的目标标签。</text>
 				</view>
-				<scroll-view scroll-y class="merge-list">
+				<scroll-view :scroll-y="true" class="merge-list">
 					<view
 						class="merge-target"
 						v-for="label in mergeTargetLabels"
@@ -127,11 +127,11 @@
 	const mergeTargetLabels = computed<Label[]>(() => {
 		if (mergeSourceLabel.value == null) return labels.value
 		const source = mergeSourceLabel.value
-		return labels.value.filter(label => label.id !== source.id)
+		return labels.value.filter(label => label.id != source.id)
 	})
 
 	const syncTitle = () => {
-		pageTitle.value = kind.value === 'event' ? '事件标签管理' : '记账标签管理'
+		pageTitle.value = kind.value == 'event' ? '事件标签管理' : '记账标签管理'
 		uni.setNavigationBarTitle({
 			title: pageTitle.value
 		})
@@ -197,7 +197,7 @@
 
 	const saveLabel = () => {
 		const normalizedName = labelName.value.trim()
-		if (normalizedName.length === 0) {
+		if (normalizedName.length == 0) {
 			labelError.value = '请输入标签名称'
 			uni.showToast({ title: '请输入标签名称', icon: 'none' })
 			return
@@ -211,7 +211,7 @@
 
 		let success = false
 		if (isEdit.value) {
-			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
+			const currentLabel = labels.value.find(item => item.id == editingLabelId.value)
 			success = LabelManager.updateLabel({
 				id: editingLabelId.value,
 				name: normalizedName,
@@ -262,7 +262,7 @@
 	}
 
 	onLoad((options: UTSJSONObject) => {
-		if (getOptionString(options, 'kind') === 'account') {
+		if (getOptionString(options, 'kind') == 'account') {
 			kind.value = 'account'
 		}
 		syncTitle()

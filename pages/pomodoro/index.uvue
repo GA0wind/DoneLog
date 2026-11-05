@@ -7,15 +7,13 @@
 		</view>
 
 		<view class="mode-row">
-			<view
+			<button
 				class="mode-chip"
 				v-for="item in modeOptions"
 				:key="item.id"
-				:class="{ active: mode === item.id, last: item.id === 'long' }"
+				:class="{ active: mode == item.id, last: item.id == 'long' }"
 				@click="switchMode(item.id)"
-			>
-				<text class="mode-chip-text" :class="{ active: mode === item.id }">{{item.name}}</text>
-			</view>
+			>{{item.name}}</button>
 		</view>
 
 		<view class="timer-panel">
@@ -78,7 +76,7 @@
 	}
 
 	const getDurationSeconds = (value: PomodoroMode): number => {
-		const option = modeOptions.find(item => item.id === value)
+		const option = modeOptions.find(item => item.id == value)
 		const minutes = option != null ? option.minutes : 25
 		return minutes * 60
 	}
@@ -96,8 +94,8 @@
 	})
 
 	const modeTitle = computed(() => {
-		if (mode.value === 'short') return '短休息'
-		if (mode.value === 'long') return '长休息'
+		if (mode.value == 'short') return '短休息'
+		if (mode.value == 'long') return '长休息'
 		return '专注时间'
 	})
 
@@ -112,8 +110,8 @@
 	})
 
 	const nextText = computed(() => {
-		if (mode.value !== 'focus') return '休息结束后回到专注'
-		if ((completedFocusCount.value + 1) % 4 === 0) return '完成后进入长休息'
+		if (mode.value != 'focus') return '休息结束后回到专注'
+		if ((completedFocusCount.value + 1) % 4 == 0) return '完成后进入长休息'
 		return '完成后进入短休息'
 	})
 
@@ -161,10 +159,10 @@
 
 	const finishRound = (completeEvent: boolean) => {
 		stopTimer()
-		if (mode.value === 'focus') {
+		if (mode.value == 'focus') {
 			completedFocusCount.value += 1
 			const linkedCompleted = completeEvent == true && linkedEventId.value > 0 ? completeLinkedEvent() : false
-			const nextMode: PomodoroMode = completedFocusCount.value % 4 === 0 ? 'long' : 'short'
+			const nextMode: PomodoroMode = completedFocusCount.value % 4 == 0 ? 'long' : 'short'
 			switchMode(nextMode)
 			uni.showToast({ title: linkedCompleted ? '事件已完成' : '专注完成', icon: 'success' })
 			return
@@ -210,13 +208,14 @@
 			linkedEvent.value = EventManager.getEventById(linkedEventId.value)
 			const event = linkedEvent.value
 			if (event != null) {
-				const lastRecord = EventManager.getEventHistory(linkedEventId.value)[0]
+				const history = EventManager.getEventHistory(linkedEventId.value)
+				const lastRecord = history.length > 0 ? history[0] : null
 				linkedEventCompleted.value = EventManager.isCompletedOnDate(linkedEventId.value, Date.now())
 					|| EventManager.isFixedDateCompleted(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
 			}
 		}
 
-		if (getOptionString(options, 'autoStart') === '1' && linkedEventCompleted.value == false) {
+		if (getOptionString(options, 'autoStart') == '1' && linkedEventCompleted.value == false) {
 			switchMode('focus')
 			startTimer()
 		}
@@ -274,6 +273,9 @@
 	}
 
 	.mode-chip {
+		padding: 0;
+		font-size: 13px;
+		color: #4d5b67;
 		flex: 1;
 		height: 40px;
 		line-height: 40px;
@@ -294,6 +296,7 @@
 	}
 
 	.mode-chip.active {
+		color: #ffffff;
 		background-color: #1f7a72;
 	}
 

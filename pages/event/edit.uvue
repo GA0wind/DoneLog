@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="form">
 			<!-- 事件名称 -->
 			<view class="form-item">
@@ -20,7 +20,7 @@
 						>
 							{{getLabelName(labelId)}}
 						</text>
-						<text class="placeholder" v-if="selectedLabelIds.length === 0">请选择标签</text>
+						<text class="placeholder" v-if="selectedLabelIds.length == 0">请选择标签</text>
 					</view>
 					<text class="arrow">▼</text>
 				</view>
@@ -30,23 +30,23 @@
 			<view class="form-item">
 				<text class="label">重复方式</text>
 				<radio-group @change="onRepeatTypeChange">
-					<label class="radio-item">
-						<radio value="interval" :checked="repeatType === 'interval'" />
+					<view class="radio-item" @click="repeatType = 'interval'">
+						<radio value="interval" :checked="repeatType == 'interval'" />
 						<text class="radio-text">按间隔天数</text>
-					</label>
-					<label class="radio-item">
-						<radio value="date" :checked="repeatType === 'date'" />
+					</view>
+					<view class="radio-item" @click="repeatType = 'date'">
+						<radio value="date" :checked="repeatType == 'date'" />
 						<text class="radio-text">自定义下次完成时间</text>
-					</label>
-					<label class="radio-item">
-						<radio value="single" :checked="repeatType === 'single'" />
+					</view>
+					<view class="radio-item" @click="repeatType = 'single'">
+						<radio value="single" :checked="repeatType == 'single'" />
 						<text class="radio-text">不重复</text>
-					</label>
+					</view>
 				</radio-group>
 			</view>
 
 			<!-- 间隔天数 -->
-			<view class="form-item" v-if="repeatType === 'interval'">
+			<view class="form-item" v-if="repeatType == 'interval'">
 				<text class="label">间隔天数</text>
 				<input 
 					class="input" 
@@ -58,7 +58,7 @@
 			</view>
 
 			<!-- 下次完成时间 -->
-			<view class="form-item" v-if="repeatType === 'date'">
+			<view class="form-item" v-if="repeatType == 'date'">
 				<text class="label">下次完成时间</text>
 				<picker mode="date" :value="nextDueDate" @change="onDateChange">
 					<view class="picker">
@@ -86,7 +86,7 @@
 				<view class="modal-header">
 					<text class="modal-title">选择标签</text>
 				</view>
-				<scroll-view scroll-y class="modal-body selector-body">
+				<scroll-view :scroll-y="true" class="modal-body selector-body">
 					<view class="label-list">
 						<view 
 							class="label-item" 
@@ -131,11 +131,11 @@
 								class="color-option" 
 								v-for="color in colorOptions" 
 								:key="color"
-								:class="{ 'selected': newLabelColor === color }"
+								:class="{ 'selected': newLabelColor == color }"
 								:style="{ backgroundColor: color }"
 								@click.stop="newLabelColor = color"
 							>
-								<text v-if="newLabelColor === color" class="check-icon">✓</text>
+								<text v-if="newLabelColor == color" class="check-icon">✓</text>
 							</view>
 						</view>
 					</view>
@@ -184,18 +184,6 @@
 		'#8E8E93', // 灰色
 		'#34C759'  // 深绿
 	]
-
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
-		const detail = getDetailObject(e)
-		if (detail == null) return ''
-		const value = detail[key]
-		return value != null ? `${value}` : ''
-	}
 
 	const getOptionString = (options: UTSJSONObject, key: string): string => {
 		const value = options[key]
@@ -307,7 +295,7 @@
 	// 新增标签
 	const addNewLabel = () => {
 		const createdName = newLabelName.value.trim()
-		if (createdName.length === 0) {
+		if (createdName.length == 0) {
 			newLabelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
@@ -339,7 +327,7 @@
 				icon: 'success'
 			})
 			loadLabels()
-			const created = labels.value.find(item => item.name === createdName)
+			const created = labels.value.find(item => item.name == createdName)
 			if (created != null && selectedLabelIds.value.includes(created.id) == false) {
 				selectedLabelIds.value.push(created.id)
 			}
@@ -355,20 +343,20 @@
 
 	// 获取标签名称
 	const getLabelName = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.name : ''
 	}
 
 	// 获取标签颜色
 	const getLabelColor = (labelId: number): string => {
-		const label = labels.value.find(l => l.id === labelId)
+		const label = labels.value.find(l => l.id == labelId)
 		return label != null ? label.color : '#007AFF'
 	}
 
 	// 重复方式改变
-	const onRepeatTypeChange = (e: UTSJSONObject) => {
-		const value = getDetailStringValue(e, 'value')
-		if (value === 'date' || value === 'single') {
+	const onRepeatTypeChange = (e: UniRadioGroupChangeEvent) => {
+		const value = e.detail.value
+		if (value == 'date' || value == 'single') {
 			repeatType.value = value
 			return
 		}
@@ -376,13 +364,13 @@
 	}
 
 	// 日期改变
-	const onDateChange = (e: UTSJSONObject) => {
-		nextDueDate.value = getDetailStringValue(e, 'value')
+	const onDateChange = (e: UniPickerChangeEvent) => {
+		nextDueDate.value = `${e.detail.value}`
 	}
 
 	// 保存事件
 	const saveEvent = () => {
-		if (eventName.value.trim().length === 0) {
+		if (eventName.value.trim().length == 0) {
 			uni.showToast({
 				title: '请输入事件名称',
 				icon: 'none'
@@ -390,7 +378,7 @@
 			return
 		}
 
-		if (repeatType.value === 'interval' && intervalDays.value.length === 0) {
+		if (repeatType.value == 'interval' && intervalDays.value.length == 0) {
 			uni.showToast({
 				title: '请输入间隔天数',
 				icon: 'none'
@@ -398,7 +386,7 @@
 			return
 		}
 
-		if (repeatType.value === 'interval') {
+		if (repeatType.value == 'interval') {
 			const interval = parseInt(intervalDays.value)
 			if (Number.isNaN(interval) || interval < 0) {
 				uni.showToast({
@@ -409,7 +397,7 @@
 			}
 		}
 
-		if (repeatType.value === 'date' && nextDueDate.value.length === 0) {
+		if (repeatType.value == 'date' && nextDueDate.value.length == 0) {
 			uni.showToast({
 				title: '请选择下次完成时间',
 				icon: 'none'
@@ -429,8 +417,8 @@
 			id: eventId.value,
 			name: eventName.value,
 			labelIdList: selectedLabelIds.value.join(','),
-			intervalDays: repeatType.value === 'interval' ? parseInt(intervalDays.value) : (repeatType.value === 'single' ? -1 : 0),
-			nextDueDate: repeatType.value === 'date' ? new Date(nextDueDate.value).getTime() : 0,
+			intervalDays: repeatType.value == 'interval' ? parseInt(intervalDays.value) : (repeatType.value == 'single' ? -1 : 0),
+			nextDueDate: repeatType.value == 'date' ? new Date(nextDueDate.value).getTime() : 0,
 			remark: remark.value,
 			isTerminated: currentEvent.value.isTerminated,
 			terminatedAt: currentEvent.value.terminatedAt,

@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<view class="calendar-shell">
 			<!-- 日历头部 -->
 			<view class="calendar-header">
@@ -93,7 +93,7 @@
 						<text class="remark-text">{{getShortRemark(event.remark)}}</text>
 					</view>
 				</view>
-				<view class="empty-tip" v-if="filteredEvents.length === 0">
+				<view class="empty-tip" v-if="filteredEvents.length == 0">
 					<text>暂无事件</text>
 				</view>
 			</view>
@@ -152,24 +152,6 @@
 	const yearOptions = Array.from({ length: 101 }, (_, index) => `${2000 + index}年`)
 	const monthOptions = Array.from({ length: 12 }, (_, index) => `${index + 1}月`)
 
-	const getDetailObject = (e: UTSJSONObject): UTSJSONObject | null => {
-		const detail = e['detail']
-		return detail != null ? detail as UTSJSONObject : null
-	}
-
-	const getDetailStringValue = (e: UTSJSONObject, key: string): string => {
-		const detail = getDetailObject(e)
-		if (detail == null) return ''
-		const value = detail[key]
-		return value != null ? `${value}` : ''
-	}
-
-	const getDetailNumberValue = (e: UTSJSONObject, key: string): number => {
-		const value = getDetailStringValue(e, key)
-		const parsed = parseInt(value)
-		return Number.isNaN(parsed) ? 0 : parsed
-	}
-
 	const getOffsetYearMonth = (year: number, month: number, offset: number): YearMonth => {
 		const date = new Date(year, month - 1 + offset, 1)
 		return {
@@ -187,11 +169,11 @@
 
 		for (let i = startWeekday - 1; i >= 0; i--) {
 			days.push({
-				year: month === 1 ? year - 1 : year,
-				month: month === 1 ? 12 : month - 1,
+				year: month == 1 ? year - 1 : year,
+				month: month == 1 ? 12 : month - 1,
 				day: prevLastDay.getDate() - i,
 				isCurrentMonth: false,
-				fullDate: new Date(month === 1 ? year - 1 : year, month === 1 ? 11 : month - 2, prevLastDay.getDate() - i).getTime()
+				fullDate: new Date(month == 1 ? year - 1 : year, month == 1 ? 11 : month - 2, prevLastDay.getDate() - i).getTime()
 			})
 		}
 
@@ -208,11 +190,11 @@
 		const remainingDays = 42 - days.length
 		for (let i = 1; i <= remainingDays; i++) {
 			days.push({
-				year: month === 12 ? year + 1 : year,
-				month: month === 12 ? 1 : month + 1,
+				year: month == 12 ? year + 1 : year,
+				month: month == 12 ? 1 : month + 1,
 				day: i,
 				isCurrentMonth: false,
-				fullDate: new Date(month === 12 ? year + 1 : year, month, i).getTime()
+				fullDate: new Date(month == 12 ? year + 1 : year, month, i).getTime()
 			})
 		}
 
@@ -240,7 +222,7 @@
 		if (event.isTerminated == false || event.terminatedAt <= 0) {
 			return false
 		}
-		return getStartOfDay(event.terminatedAt) === dayStart
+		return getStartOfDay(event.terminatedAt) == dayStart
 	}
 
 	const isTerminatedOnSelectedDate = (event: Event): boolean => {
@@ -251,7 +233,7 @@
 		const history = EventManager.getEventHistory(event.id)
 
 		for (let i = 0; i < history.length; i++) {
-			if (getStartOfDay(history[i].lastCompleteDate) === selectedDayStart) {
+			if (getStartOfDay(history[i].lastCompleteDate) == selectedDayStart) {
 				return true
 			}
 		}
@@ -262,9 +244,9 @@
 		if (event.isTerminated) {
 			return false
 		}
-		const lastRecord = history[0]
+		const lastRecord = history.length > 0 ? history[0] : null
 		const dueDateStart = EventManager.getDueDateStart(event, lastRecord != null ? lastRecord.lastCompleteDate : null)
-		return dueDateStart === selectedDayStart
+		return dueDateStart == selectedDayStart
 	}
 
 	const syncSelectedDateToCurrentMonth = () => {
@@ -302,10 +284,12 @@
 	}
 
 	const displayYear = computed(() => {
+		if (swiperIndex.value < 0 || swiperIndex.value >= calendarMonths.value.length) return currentYear.value
 		const monthData = calendarMonths.value[swiperIndex.value]
 		return monthData != null ? monthData.year : currentYear.value
 	})
 	const displayMonth = computed(() => {
+		if (swiperIndex.value < 0 || swiperIndex.value >= calendarMonths.value.length) return currentMonth.value
 		const monthData = calendarMonths.value[swiperIndex.value]
 		return monthData != null ? monthData.month : currentMonth.value
 	})
@@ -315,16 +299,16 @@
 	})
 
 	const isSelected = (day: CalendarDay): boolean => {
-		return day.year === selectedDate.value.year
-			&& day.month === selectedDate.value.month
-			&& day.day === selectedDate.value.day
+		return day.year == selectedDate.value.year
+			&& day.month == selectedDate.value.month
+			&& day.day == selectedDate.value.day
 	}
 
 	const isToday = (day: CalendarDay): boolean => {
 		const now = new Date()
-		return day.year === now.getFullYear()
-			&& day.month === now.getMonth() + 1
-			&& day.day === now.getDate()
+		return day.year == now.getFullYear()
+			&& day.month == now.getMonth() + 1
+			&& day.day == now.getDate()
 	}
 
 	const hasEvent = (day: CalendarDay): boolean => {
@@ -368,13 +352,14 @@
 		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
-	const onSwiperChange = (e: UTSJSONObject) => {
-		swiperIndex.value = getDetailNumberValue(e, 'current')
+	const onSwiperChange = (e: UniSwiperChangeEvent) => {
+		swiperIndex.value = e.detail.current
 	}
 
-	const onSwiperAnimationFinish = (e: UTSJSONObject) => {
-		const index = getDetailNumberValue(e, 'current')
-		if (index === 1) {
+	const onSwiperAnimationFinish = (e: UniSwiperAnimationFinishEvent) => {
+		const index = e.detail.current
+		if (index < 0 || index >= calendarMonths.value.length) return
+		if (index == 1) {
 			return
 		}
 
@@ -390,22 +375,22 @@
 		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
-	const onYearChange = (e: UTSJSONObject) => {
-		currentYear.value = 2000 + getDetailNumberValue(e, 'value')
+	const onYearChange = (e: UniPickerChangeEvent) => {
+		currentYear.value = 2000 + parseInt(`${e.detail.value}`)
 		syncSelectedDateToCurrentMonth()
 		generateCalendarSilently()
 		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
-	const onMonthChange = (e: UTSJSONObject) => {
-		currentMonth.value = getDetailNumberValue(e, 'value') + 1
+	const onMonthChange = (e: UniPickerChangeEvent) => {
+		currentMonth.value = parseInt(`${e.detail.value}`) + 1
 		syncSelectedDateToCurrentMonth()
 		generateCalendarSilently()
 		selectedDateOverview.value = AccountManager.getOverviewByDate(getSelectedDateStart())
 	}
 
 	const getShortRemark = (remark: string): string => {
-		if (remark.length === 0) return ''
+		if (remark.length == 0) return ''
 		return remark.length > 20 ? remark.substring(0, 20) + '...' : remark
 	}
 

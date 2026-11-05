@@ -1,5 +1,5 @@
 <template>
-	<scroll-view scroll-y class="container">
+	<scroll-view :scroll-y="true" class="container">
 		<!-- 标签列表 -->
 		<view class="label-list">
 			<view 
@@ -16,7 +16,7 @@
 					<button class="delete-btn" @click.stop="deleteLabel(label.id)">删除</button>
 				</view>
 			</view>
-			<view class="empty-tip" v-if="labels.length === 0">
+			<view class="empty-tip" v-if="labels.length == 0">
 				<text>暂无标签</text>
 			</view>
 		</view>
@@ -45,11 +45,11 @@
 								class="color-option" 
 								v-for="color in colorOptions" 
 								:key="color"
-								:class="{ 'selected': labelColor === color }"
+								:class="{ 'selected': labelColor == color }"
 								:style="{ backgroundColor: color }"
 								@click="labelColor = color"
 							>
-								<text v-if="labelColor === color" class="check-icon">✓</text>
+								<text v-if="labelColor == color" class="check-icon">✓</text>
 							</view>
 						</view>
 					</view>
@@ -129,7 +129,7 @@
 	// 保存标签
 	const saveLabel = () => {
 		const normalizedName = labelName.value.trim()
-		if (normalizedName.length === 0) {
+		if (normalizedName.length == 0) {
 			labelError.value = '请输入标签名称'
 			uni.showToast({
 				title: '请输入标签名称',
@@ -150,7 +150,7 @@
 		let success = false
 		if (isEdit.value) {
 			// 编辑标签
-			const currentLabel = labels.value.find(item => item.id === editingLabelId.value)
+			const currentLabel = labels.value.find(item => item.id == editingLabelId.value)
 			const label: Label = {
 				id: editingLabelId.value,
 				name: normalizedName,

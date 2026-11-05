@@ -2,7 +2,7 @@
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager } from '@/utils/accountManager.uts'
-	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
+	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget'
 
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0
@@ -27,19 +27,19 @@
 		if (payload == null) {
 			return
 		}
-		if (payload.length === 0) {
+		if (payload.length == 0) {
 			return
 		}
 
 		try {
 			const action = JSON.parse<WidgetActionPayload>(payload)
-			if (action == null || action.type.length === 0) {
+			if (action == null || action.type.length == 0) {
 				return
 			}
 
 			const actionType = action.type
 			const actionEventId = action.eventId
-			if (actionType === 'open-complete' && actionEventId > 0) {
+			if (actionType == 'open-complete' && actionEventId > 0) {
 				const event = EventManager.getEventById(actionEventId)
 				if (event == null) {
 					return
