@@ -1,0 +1,47 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.donelog.app'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    defaultConfig {
+        applicationId 'com.donelog.app'
+        minSdk 21
+        targetSdk 35
+        versionCode project.property('donelogVersionCode').toInteger()
+        versionName project.property('donelogVersionName')
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+        buildConfigField 'String', 'DCLOUDUnionId', '""'
+        buildConfigField 'String', 'UTSRegisterComponents', '"[]"'
+        buildConfigField 'String', 'UTSRegisterProviders', '"[]"'
+        buildConfigField 'String[]', 'UTSHooksClassArray', '{}'
+        def registrations = [
+            'uts.sdk.modules.DCloudUniActionSheet.UniActionSheetExtApiPagesRegister',
+            'uts.sdk.modules.DCloudUniModal.UniModalExtApiPagesRegister',
+            'uts.sdk.modules.DCloudUniPicker.UniPickerExtApiPagesRegister',
+            'uts.sdk.modules.DCloudUniPicker.UniPickerExtApiComponentsRegister'
+        ].collect { [class: it, method: 'register'] }
+        buildConfigField 'String', 'UTSEasyCom', JsonOutput.toJson(JsonOutput.toJson(registrations))
+    }
+    buildFeatures { buildConfig true }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions { jvmTarget = '1.8' }
+    androidResources {
+        additionalParameters '--auto-add-overlay'
+        ignoreAssetsPattern '!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~'
+    }
+    packaging { resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' } }
+}
+dependencies {
+    implementation project(':uniappx')
+    implementation files(rootProject.ext.dcloudAars)
+}

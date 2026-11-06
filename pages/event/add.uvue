@@ -220,7 +220,7 @@
 	import { EventManager } from '@/utils/eventManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { EventInput, Label, RepeatUnit } from '@/utils/storage.uts'
-	import { requestEventNotificationPermission } from '@/uni_modules/donelogWidget/utssdk'
+	import { requestEventNotificationPermission } from '@/uni_modules/donelogWidget'
 
 	type IntervalUnitOption = {
 		value: RepeatUnit

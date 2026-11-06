@@ -3,7 +3,7 @@
 	import { ShiftManager } from '@/utils/shiftManager.uts'
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager } from '@/utils/accountManager.uts'
-	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
+	import { consumePendingWidgetAction, saveWidgetSnapshot } from '@/uni_modules/donelogWidget'
 
 	// #ifdef APP-ANDROID || APP-HARMONY
 	let firstBackTime = 0

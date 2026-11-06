@@ -2,3 +2,12 @@ node_modules/
 unpackage/
 .hbuilderx/
 .DS_Store
+/local-native-sdk/
+/_vendor/
+/.idea/
+/build-local.ps1
+/.codex-*.log
+/.codex-*.pid
+/.codex-sdk-download-page.html
+*.apk
+*.aab

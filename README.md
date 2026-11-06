@@ -104,7 +104,7 @@ DoneLog/
 ├─ main.uts
 ├─ manifest.json
 ├─ pages.json
-├─ build-local.ps1
+├─ scripts/Build-Android.ps1
 ├─ README.md
 ├─ static/
 │  ├─ logo.png
@@ -143,8 +143,7 @@ DoneLog/
 │           ├─ index.uts
 │           ├─ AndroidManifest.xml
 │           └─ res/
-└─ local-native-sdk/
-   └─ uniappxnativepackage/
+└─ scripts/android/ (本地原生工程配置)
 ```
 
 ## 关键文件说明
@@ -160,7 +159,7 @@ DoneLog/
 | `utils/labelManager.uts` | 事件/记账标签的增删改查、排序、合并、重置 |
 | `uni_modules/donelogWidget/utssdk/index.uts` | UTS 插件跨端导出入口 |
 | `uni_modules/donelogWidget/utssdk/app-android/index.uts` | Android 桌面组件、通知权限、提醒闹钟和通知点击桥接 |
-| `build-local.ps1` | 本地导出 uni-app x 资源并打包 Android debug APK |
+| `scripts/Build-Android.ps1` | 本地导出 uni-app x 资源并打包 Android debug APK |
 
 ## 页面说明
 
@@ -386,45 +385,20 @@ type BudgetSettings = {
 
 ## 构建
 
-### 环境要求
-
-- HBuilderX 5.x，需支持 `uni-app x`
-- JDK 21，本项目脚本默认路径为 `D:\jdk-21_windows-x64_bin\jdk-21.0.2`
-- Android SDK，本项目脚本默认路径为 `D:\Android\Sdk`
-- Gradle 8.14.3，本项目脚本默认路径为 `D:\Android\gradle\gradle-8.14.3\bin\gradle.bat`
-
-### 完整打包
+环境与构建步骤见 [本地打包指南](docs/ANDROID-LOCAL-BUILD.md)。
 
 ```powershell
-.\build-local.ps1
+.\scripts\Build-Android.ps1
 ```
 
-脚本会执行：
-
-1. 调用 HBuilderX CLI 导出 Android 资源
-2. 同步导出的 assets 和 Kotlin 源码到本地原生工程
-3. 调用 Gradle 构建 debug APK
-
-输出路径：
-
-```text
-local-native-sdk/uniappxnativepackage/app/build/outputs/apk/debug/app-debug.apk
-```
-
-### 仅打包原生工程
-
-```powershell
-.\build-local.ps1 -BuildOnly
-```
-
-仅适合没有改 `.uvue`、`.uts`、`manifest.json`、`pages.json` 等 uni-app x 源码时使用。
+输出到 `unpackage/release/apk/`，该目录由 Git 忽略。
 
 ## 真机调试
 
 ### 安装 APK
 
 ```powershell
-adb install -r local-native-sdk/uniappxnativepackage/app/build/outputs/apk/debug/app-debug.apk
+adb install -r unpackage/release/apk/DoneLog-*-local-debug.apk
 ```
 
 ### 抓取白屏或崩溃日志
@@ -471,7 +445,7 @@ com.example.donelog
 
 ## 已验证
 
-- `.\build-local.ps1` 完整构建通过
+- 旧构建入口曾完整构建通过；新入口的历史模拟器验证见 [测试记录](docs/ANDROID-QA-2026-11-05.md)
 - Android debug APK 已生成
 - 待完成事件无完成记录时，日历页和事件详情页不再直接访问空数组
 - `leakcanary-android` 依赖已移除

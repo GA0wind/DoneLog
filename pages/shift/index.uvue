@@ -37,7 +37,7 @@
 <script setup lang="uts">
 	import { ShiftReminder } from '@/utils/storage.uts'
 	import { ShiftManager } from '@/utils/shiftManager.uts'
-	import { requestEventNotificationPermission, canScheduleShiftExactAlarm, openShiftExactAlarmSettings } from '@/uni_modules/donelogWidget/utssdk'
+	import { requestEventNotificationPermission, canScheduleShiftExactAlarm, openShiftExactAlarmSettings } from '@/uni_modules/donelogWidget'
 
 	const today = new Date()
 	const formatDate = (date: Date): string => {

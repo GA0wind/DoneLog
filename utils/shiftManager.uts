@@ -1,5 +1,5 @@
 import { ShiftReminder, StorageUtils } from './storage.uts'
-import { scheduleShiftNotifications } from '@/uni_modules/donelogWidget/utssdk'
+import { scheduleShiftNotifications } from '@/uni_modules/donelogWidget'
 
 export class ShiftManager {
   static getUpcoming(): ShiftReminder[] {

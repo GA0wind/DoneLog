@@ -10,7 +10,7 @@ import {
   PaymentMethodInput
 } from './storage.uts'
 import { EventManager } from './eventManager.uts'
-import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget/utssdk'
+import { saveWidgetSnapshot } from '@/uni_modules/donelogWidget'
 
 export type StatsPeriod = 'week' | 'month'
 

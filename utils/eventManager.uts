@@ -1,5 +1,5 @@
 import { StorageUtils, Event, EventInput, CompletionRecord, RepeatUnit } from './storage.uts'
-import { cancelEventNotifications, saveWidgetSnapshot, scheduleEventNotifications } from '@/uni_modules/donelogWidget/utssdk'
+import { cancelEventNotifications, saveWidgetSnapshot, scheduleEventNotifications } from '@/uni_modules/donelogWidget'
 
 export type StatsPeriod = 'week' | 'month'
 
