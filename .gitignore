@@ -11,3 +11,7 @@ unpackage/
 /.codex-sdk-download-page.html
 *.apk
 *.aab
+*.keystore
+*.jks
+*.p12
+*.pem

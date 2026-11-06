@@ -135,6 +135,17 @@
 				</view>
 			</view>
 		</view>
+
+		<view class="modal" v-if="showSetup">
+			<view class="filter-modal-content">
+				<text class="modal-title">首次使用 · 初始化</text>
+				<text class="setup-description">记账 AI 分类使用你的 DeepSeek API Key，描述和标签会发送给 DeepSeek。密钥只保存在本机；其他记录功能不需要密钥。</text>
+				<input class="setup-input" :password="true" v-model="setupKey" placeholder="填写 DeepSeek API Key" />
+				<text class="setup-error" v-if="setupError.length > 0">{{setupError}}</text>
+				<button class="setup-button" @click="completeSetup">保存并开始使用</button>
+				<text class="setup-skip" @click="skipSetup">暂不启用 AI，先使用记录功能</text>
+			</view>
+		</view>
 	</scroll-view>
 </template>
 
@@ -143,6 +154,7 @@
 	import { LabelManager } from '@/utils/labelManager.uts'
 	import { AccountManager, AccountOverview } from '@/utils/accountManager.uts'
 	import { Event, Label } from '@/utils/storage.uts'
+	import { AccountAi } from '@/utils/accountAi.uts'
 
 	type StatusOption = {
 		id: number
@@ -164,6 +176,30 @@
 	const todayDueEventCount = ref(0)
 	const showLabelFilterModal = ref(false)
 	const showStatusFilterModal = ref(false)
+	const showSetup = ref(false)
+	const setupKey = ref('')
+	const setupError = ref('')
+	const setupStorageKey = 'donelog_initialized'
+
+	const completeSetup = () => {
+		if (setupKey.value.trim().length < 8) {
+			setupError.value = '请填写有效的 API Key'
+			return
+		}
+		if (AccountAi.saveApiKey(setupKey.value) == false) {
+			setupError.value = '保存失败，请重试'
+			return
+		}
+		uni.setStorageSync(setupStorageKey, true)
+		showSetup.value = false
+		setupKey.value = ''
+		setupError.value = ''
+	}
+
+	const skipSetup = () => {
+		uni.setStorageSync(setupStorageKey, true)
+		showSetup.value = false
+	}
 	const labelOptions = ref<Label[]>([{ id: 0, name: '全部标签', color: '', sortOrder: 0 }])
 	const selectedStatus = ref<StatusOption | null>({ id: 1, name: '进行中' })
 	const statusOptions = ref<StatusOption[]>([
@@ -488,6 +524,7 @@
 	// 页面显示时加载数据
 	onShow(() => {
 		loadData()
+		showSetup.value = uni.getStorageSync(setupStorageKey) !== true && AccountAi.getApiKey().length === 0
 	})
 </script>
 
@@ -889,6 +926,12 @@
 		color: #24323a;
 		margin-bottom: 12px;
 	}
+
+	.setup-description { color: #66727b; font-size: 13px; line-height: 20px; margin-bottom: 14px; }
+	.setup-input { background-color: #fff; border-width: 1px; border-style: solid; border-color: #d7dedb; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+	.setup-error { color: #b94035; font-size: 12px; margin-bottom: 8px; }
+	.setup-button { background-color: #1f7a72; color: #fff; border-radius: 10px; margin-top: 8px; }
+	.setup-skip { color: #60766f; font-size: 12px; text-align: center; margin-top: 14px; }
 
 	.filter-option {
 		height: 48px;
